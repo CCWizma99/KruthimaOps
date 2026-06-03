@@ -47,7 +47,7 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------
 USE_PSEUDO = True
 SEED = 42
-QUANTILE_ALPHAS = [0.25, 0.75]
+QUANTILE_ALPHAS = [0.40, 0.45, 0.50, 0.55, 0.60]
 USE_BLEND = False
 USE_ADVERSARIAL_WEIGHTS = False  # Toggle to correct spatial covariate shift
 
@@ -385,8 +385,10 @@ if USE_ADVERSARIAL_WEIGHTS:
 MODEL_NAMES = [
     "XGB-MAE-1 (d7)",
     "CAT-MAE-1 (d5)",
+    "CAT-MAE-2 (d5)",
     "CAT-RMSE (d5)",
     "LGB-MAE (d5)",
+    "XGB-MAE-2 (d5)",
     "CAT-Quantile-Median"
 ]
 
@@ -581,56 +583,72 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
 
     # 1. XGB-MAE-1 (d7) - Unconstrained, MAE loss
     xgb_m1 = xgb.XGBRegressor(
-        n_estimators=800, learning_rate=0.05, max_depth=7, min_child_weight=4,
+        n_estimators=4000, learning_rate=0.03, max_depth=7, min_child_weight=4,
         subsample=0.85, colsample_bytree=0.6, colsample_bylevel=0.6,
         reg_alpha=2.0, reg_lambda=4.0, gamma=0.1, max_delta_step=1,
         objective="reg:absoluteerror", eval_metric="mae", tree_method="hist",
         device=XGB_DEVICE,
-        enable_categorical=False, early_stopping_rounds=50, random_state=SEED, n_jobs=-1
+        enable_categorical=False, early_stopping_rounds=100, random_state=SEED, n_jobs=-1
     )
     xgb_m1.fit(X_tr_xgb, y_tr, sample_weight=w_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
     
     # 2. CAT-MAE-1 (d5)
     cat_m1 = cb.CatBoostRegressor(
-        iterations=800, learning_rate=0.05, depth=5, l2_leaf_reg=5.0,
+        iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=5.0,
         bagging_temperature=0.7, random_strength=2.0, border_count=254,
         loss_function="MAE", eval_metric="MAE", task_type=CB_TASK_TYPE,
         random_seed=SEED, verbose=False
     )
-    cat_m1.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=50, verbose=False)
+    cat_m1.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
-
+    # 3. CAT-MAE-2 (d5)
+    cat_m2 = cb.CatBoostRegressor(
+        iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=12.0,
+        bagging_temperature=0.4, random_strength=5.0, border_count=254,
+        loss_function="MAE", eval_metric="MAE", task_type=CB_TASK_TYPE,
+        random_seed=SEED + 1, verbose=False
+    )
+    cat_m2.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
     # 4. CAT-RMSE (d5)
     cat_rmse = cb.CatBoostRegressor(
-        iterations=800, learning_rate=0.05, depth=5, l2_leaf_reg=8.0,
+        iterations=4000, learning_rate=0.03, depth=5, l2_leaf_reg=8.0,
         bagging_temperature=0.6, random_strength=3.0, border_count=254,
         loss_function="RMSE", eval_metric="RMSE", task_type=CB_TASK_TYPE,
         random_seed=SEED + 2, verbose=False
     )
-    cat_rmse.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=50, verbose=False)
+    cat_rmse.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
     # 5. LGB-MAE (d5)
     lgb_m1 = lgb.LGBMRegressor(
-        n_estimators=800, learning_rate=0.05, num_leaves=31, max_depth=5,
+        n_estimators=4000, learning_rate=0.03, num_leaves=31, max_depth=5,
         min_child_samples=40, subsample=0.8, subsample_freq=1, colsample_bytree=0.6,
         reg_alpha=2.0, reg_lambda=5.0, objective="regression_l1",
         random_state=SEED, n_jobs=-1, verbosity=-1
     )
     lgb_m1.fit(X_tr, y_tr, sample_weight=w_tr, eval_set=[(X_va, y_va)], callbacks=[lgb.early_stopping(150, verbose=False)])
 
-
+    # 6. XGB-MAE-2 (d5) - Unconstrained, MAE loss
+    xgb_m2 = xgb.XGBRegressor(
+        n_estimators=4000, learning_rate=0.03, max_depth=5, min_child_weight=6,
+        subsample=0.75, colsample_bytree=0.5, colsample_bylevel=0.8,
+        reg_alpha=5.0, reg_lambda=10.0, gamma=0.2, max_delta_step=1,
+        objective="reg:absoluteerror", eval_metric="mae", tree_method="hist",
+        device=XGB_DEVICE,
+        enable_categorical=False, early_stopping_rounds=100, random_state=SEED + 3, n_jobs=-1
+    )
+    xgb_m2.fit(X_tr_xgb, y_tr, sample_weight=w_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
 
     # 7. Quantile Ensemble Base Model
     quantile_preds_va = []
     quantile_preds_te = []
     for alpha in QUANTILE_ALPHAS:
         qmodel = cb.CatBoostRegressor(
-            iterations=800, learning_rate=0.05, depth=5, l2_leaf_reg=5.0,
+            iterations=3000, learning_rate=0.03, depth=5, l2_leaf_reg=5.0,
             loss_function=f'Quantile:alpha={alpha}', eval_metric=f'Quantile:alpha={alpha}',
             task_type=CB_TASK_TYPE, thread_count=-1, random_seed=SEED, verbose=False
         )
-        qmodel.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=50, verbose=False)
+        qmodel.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=100, verbose=False)
         quantile_preds_va.append(qmodel.predict(X_va_cat))
         quantile_preds_te.append(qmodel.predict(X_te_cat))
         
@@ -640,15 +658,19 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
     # --- Save Out-Of-Fold Predictions ---
     oof_preds["XGB-MAE-1 (d7)"][va_idx_clean] = xgb_m1.predict(X_va_xgb)
     oof_preds["CAT-MAE-1 (d5)"][va_idx_clean] = cat_m1.predict(X_va_cat)
+    oof_preds["CAT-MAE-2 (d5)"][va_idx_clean] = cat_m2.predict(X_va_cat)
     oof_preds["CAT-RMSE (d5)"][va_idx_clean] = cat_rmse.predict(X_va_cat)
     oof_preds["LGB-MAE (d5)"][va_idx_clean] = lgb_m1.predict(X_va)
+    oof_preds["XGB-MAE-2 (d5)"][va_idx_clean] = xgb_m2.predict(X_va_xgb)
     oof_preds["CAT-Quantile-Median"][va_idx_clean] = va_quantile_median
 
     # --- Accumulate Test Predictions ---
     tst_preds["XGB-MAE-1 (d7)"] += xgb_m1.predict(X_te_xgb) / N_FOLDS
     tst_preds["CAT-MAE-1 (d5)"] += cat_m1.predict(X_te_cat) / N_FOLDS
+    tst_preds["CAT-MAE-2 (d5)"] += cat_m2.predict(X_te_cat) / N_FOLDS
     tst_preds["CAT-RMSE (d5)"] += cat_rmse.predict(X_te_cat) / N_FOLDS
     tst_preds["LGB-MAE (d5)"]  += lgb_m1.predict(X_te) / N_FOLDS
+    tst_preds["XGB-MAE-2 (d5)"] += xgb_m2.predict(X_te_xgb) / N_FOLDS
     tst_preds["CAT-Quantile-Median"] += te_quantile_median / N_FOLDS
 
     # --- Compute CV-Safe Analytical Group Medians (Bug Fixed: real rows only) ---
@@ -659,7 +681,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
     oof_analytical[va_idx_clean] = va_rows['downstream_sig'].map(smoothed_medians).fillna(GLOBAL_MEDIAN).values
     tst_analytical_fold += test_df['downstream_sig'].map(smoothed_medians).fillna(GLOBAL_MEDIAN).values / N_FOLDS
 
-    print(f"      Fold {fold+1}/5 | XGB1_it={xgb_m1.best_iteration}  CAT1_it={cat_m1.best_iteration_}  LGB_it={lgb_m1.best_iteration_}  [{time.time()-t0:.0f}s]")
+    print(f"      Fold {fold+1}/5 | XGB1_it={xgb_m1.best_iteration}  CAT1_it={cat_m1.best_iteration_}  CAT2_it={cat_m2.best_iteration_}  LGB_it={lgb_m1.best_iteration_}  [{time.time()-t0:.0f}s]")
 
 # Meta features for stacking
 oof_meta = np.column_stack([oof_preds[m][real_mask] for m in MODEL_NAMES])
