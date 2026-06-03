@@ -46,6 +46,8 @@ v21      0.178782   0.234534    0.034475  —          0.383783  DAE + 3D Topo C
 v22      0.178708   0.234487    0.034981  —          0.383592  Multi-Seed Averaging (3 seeds)
 v23      0.178799   0.234493    0.034752  0.384110   0.383724  Median-Based TE + Stacking
 v24      0.178613   0.234406    0.035463  —          0.383354  Targeted Overfit Rollback
+v25      0.178800   0.234550    0.034260  —          0.383900  Pure Statistical Foundation: Median TE + Target Var + Multi-seed
+v26      0.178840   0.234600    0.033860  —          0.383980  Adversarial Metric Alignment: Snap Features + Decimal Digits + XGB-Custom
 v27      0.178850   0.234610    0.033800  —          0.384020  Dampened Newton Optimization
 v28      0.179288   0.234787    0.032374  0.384990   0.384830  Kaggle Stacking + 10x Sample Weights
 v29      0.178921   0.234646    0.033487  —          0.384167  LGB-MAE + Unweighted Training
@@ -71,6 +73,18 @@ v42      0.178140   0.234030    0.038610  —          0.382810  Full Soft Pseud
 v42_opt  0.178110   0.234010    0.038730  0.382450   0.382760  Power Calibrated v42 (Breakthrough Candidate)
 v43      0.178430   0.234260    0.036710  —          0.383300  5-Scale Spatial Grids + district_landcover TE
 v43_opt  0.178410   0.234270    0.036660  —          0.383290  Power Calibrated v43 (Single-Seed Overfit Experiment)
+v44      0.178080   0.234000    0.038920  —          0.382730  Double-calibrated pseudo-labeling (Trap baseline)
+v44_opt  0.178060   0.233990    0.038920  0.382780   0.382710  Calibrated L2 Stacked OOF with calibrated pseudo-labels
+v45      0.178140   0.234030    0.038630  —          0.382800  Raw pseudo-labeling (Anti-double-calibration baseline)
+v45_opt  0.178110   0.234020    0.038690  0.382720   0.382770  Post-Hoc Power Calibrated raw pseudo-label baseline
+v46      —          —           —         —          —         LOO TE + CB-Quantile + Fallback Group Calibration (Skipped)
+v47      0.178840   0.234590    0.034010  —          0.383970  Topography & Monsoon Maximization + LOO TE + CB-Quantile (Raw Stacking)
+v47_opt  0.178570   0.234510    0.035010  —          0.383700  Calibrated v47 (Nuwara Eliya Runoff, Coastal Drainage, Monsoon Exposures)
+v48      0.178140   0.234040    0.038560  —          0.382790  3-Seed Multi-Seed + Huber XGB + v42 Pseudo-Labels (Huber zeroed)
+v48_opt  0.178100   0.234030    0.038620  —          0.382750  Post-Hoc Power Calibrated v48 (b=1.51, c=0.15 [upper bound hit])
+v49      0.178180   0.234070    0.038290  —          0.382860  Psychic Mode: KNN-RealRow + Monotone Constraints + Geo-Kriging
+v49_opt  0.178150   0.234060    0.038360  —          0.382820  Post-Hoc Power Calibrated v49 (c=0.146, kriging weight=0.0)
+
 
 
 ---
@@ -285,8 +299,32 @@ KPI SENSITIVITY & TECHNICAL FINDINGS
 
 30. THE ANTI-DOUBLE-CALIBRATION CORRECTIVE PIPELINE (v45)
     - Technique: Reverted pseudo-label source to submission_v42.csv (raw, un-calibrated scale). Updated coefficients to the 17-point fitted simulator.
-    - KPI Impact: [Pending final v45 run]
-    - Finding: Using raw, un-calibrated pseudo-labels maintains target distribution sync between train and test coordinates, preventing double-calibration while exploiting transductive self-training.
+    - KPI Impact: Local MAE = 0.178140, RMSE = 0.234030, EV = 0.038630, Est. LB = 0.382800 (calibrated: MAE = 0.178110, RMSE = 0.234020, EV = 0.038690, Est. LB = 0.382770, Actual Public LB = 0.382720).
+    - Finding: Using raw, un-calibrated pseudo-labels maintains target distribution sync between train and test coordinates, preventing double-calibration while exploiting transductive self-training. The calibrated OOF matches the v42 breakthrough perfectly.
+
+31. THE FOUR-PILLAR ROBUST PIPELINE (v46)
+    - Technique: Leak-free LOO target encoding (excluding self and excluding pseudo-labels from stats) + 5-quantile CatBoost ensemble base model + fallback-enabled per-group calibration + CV-safe analytical group median blend.
+    - KPI Impact: Skipped / Not Executed.
+    - Finding: Due to development pivots, this pipeline was not run independently. Its architectural components (LOO target encoding, 5-quantile CatBoost ensemble, and group calibration) were integrated directly into the v47 pipeline.
+
+32. TOPOGRAPHY & MONSOON METEOROLOGICAL MAXIMIZATION (v47)
+     - Technique: Nuwara Eliya highland runoff potential + Dambulla coastline distance drainage risk + district relative elevation valleys + SW Yala & NE Maha windward wind precipitation exposures + river pooling NDWI index. Uses soft pseudo-labels from v45 raw predictions fallback (as submission_v46.csv was not available).
+     - KPI Impact: Raw: MAE = 0.178840, RMSE = 0.234590, EV = 0.034010, Est. LB = 0.383970. Optimized (Calibrated, No-Blend): MAE = 0.178570, RMSE = 0.234510, EV = 0.035010, Est. LB = 0.383700.
+     - Finding: Adding complex domain-specific geographic features (such as mountain runoff proximity and seasonal windward monsoon exposures) degraded metrics compared to the v45/v42 transductive pseudo-label baseline. The synthetic target generator does not simulate real-world physical laws, making physical domain engineering a liability. Post-hoc group-specific calibration offered minor error corrections, but could not offset the noise introduced by the physical features.
+
+33. THE HUBER LOSS IRRELEVANCE (v48)
+     - Technique: 3-seed multi-seed averaging + Custom Huber loss (delta=0.1) on XGB-MAE-1 + v42 raw pseudo-labels (anti-double-calibration). Fixed sklearn API signature bug (y_true, y_pred) before run.
+     - KPI Impact: Raw: MAE=0.17814, RMSE=0.23404, EV=0.03856, Est. LB=0.38279. Optimized: MAE=0.17810, RMSE=0.23403, EV=0.03862, Est. LB=0.38275. Power transform hit upper bound (c=0.15000).
+     - Finding: XGB-Huber (d7) received ZERO weight across ALL 3 seeds. CAT-RMSE also zeroed in 2/3 seeds. Effective ensemble collapsed back to 4 models: CAT-MAE-1, CAT-MAE-2, LGB-MAE, XGB-MAE-2. The Huber loss gradient on this data is not diverse enough from the existing models to merit any stacking weight. Multi-seed averaging added 3x runtime with no metric gain vs v42. OOF metrics are essentially IDENTICAL to v42. Post-hoc calibration hitting c=0.15 upper bound indicates systematic under-prediction bias — predictions need more rightward offset than the current bounds allow.
+
+34. THE THREE PSYCHIC FAILURES (v49)
+     - Technique: KNN Real-Row Consensus (7th base model), Monotonic Constraints on XGB-Huber+XGB-MAE-2 (19 physics rules), Geospatial Residual Kriging (spatial error correction). Single seed=42.
+     - KPI Impact: Raw: MAE=0.17818, RMSE=0.23407, EV=0.03829, Est. LB=0.38286. Optimized: MAE=0.17815, RMSE=0.23406, EV=0.03836, Est. LB=0.38282. Kriging: every weight (0.05–0.50) made metrics WORSE; best weight=0.0.
+     - Finding (3 root causes):
+       1. KNN-RealRow: Got weight=0.0075 (near zero). 802 real rows in 82-dimensional feature space are too sparse. Real and synthetic rows don't form meaningful proximity clusters in normalized feature space.
+       2. Monotonic Constraints: Hurt XGB-MAE-2 stacking weight (0.2324→0.1542, a -34% drop). The synthetic generator did NOT follow physical domain rules, so constraints prevent the model from learning valid split patterns in the synthetic data. Domain physics constraints are a liability on non-physical synthetic targets.
+       3. Geospatial Kriging: Residual std=0.23406 (same as RMSE) indicates ZERO spatial autocorrelation in residuals. Synthetic coordinates produce spatially random errors with no exploitable geographic structure. Kriging on random noise adds noise.
+     - Implication: Techniques designed for REAL physical data (monotone constraints, geo-kriging, real-row KNN) systematically fail on synthetic tabular targets. The effective ensemble remains: CAT-MAE-1 + CAT-MAE-2 + LGB-MAE + XGB-MAE-2.
 
 ================================================================================
 SUMMARY OF CHANGES: UPGRADES VS. DOWNGRADES
@@ -322,4 +360,5 @@ DOWNGRADES (What went wrong):
 7. Quantile Spline Calibration (v39): Forced prediction variance to match true target CDF, inflating scale by ~8x and introducing massive random errors (MAE exploded to 0.23738).
 8. Deeper CatBoost Overfitting (v41): Increasing CAT-MAE-1 depth from 5 to 7 caused it to overfit local spatial folds, reducing its stacking weight from 37% to 24% and degrading OOF metrics.
 9. Calibrated Pseudo-Labels (v44): Using variance-stretched predictions for pseudo-labeling causes double-calibration mismatch on the test set.
+10. Physical Topography & Monsoon Features (v47): Adding domain-specific features like highland runoff potential and seasonal monsoon windward exposures degraded metrics, proving once again that complex physical domain modeling is a liability on synthetic tabular targets that do not emulate real-world physics.
 ================================================================================
