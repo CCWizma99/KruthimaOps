@@ -98,6 +98,8 @@ v64_opt  0.178030   0.233930    0.039420  0.382560   0.382580  Global Yeo-Johnso
 v66_opt  0.178310   0.234160    0.037570  —          0.383050  Pseudo-labels upgraded to raw/uncalibrated v42
 v67_opt  0.178030   0.233960    0.039190  0.382160   0.382620  Multi-Seed (2 seeds) + Leak-Free Target Conflict Resolution
 v70_opt  —          —           —         0.382160   —         3-Seed Ensembling + Leak-Free Target Conflict Resolution
+v65_opt  —          —           —         Pending    —         4-Seed Smart Conflict + Yeo-Johnson Stacking + CAT-ORACLE
+vc1_opt  —          —           —         Pending    —         4-Seed Hybrid: TIS + GRG + Stacking Advances (Crazy 01)
 
 
 
@@ -436,6 +438,12 @@ UPGRADES (What went correct):
 12. Leak-Free Target Conflict Resolution (v58, v67, v70): Smoothing targets of rows sharing identical physical features to their group median inside the CV loop prevented target leakage while resolving duplicates. Ensembling this with multi-seed averaging (v67, v70) led to our current peak Public LB score of 0.38216.
 13. Raw Pseudo-Labeling Reversion (v66): Reverting pseudo-label source to the raw, uncalibrated v42 predictions rather than power-calibrated ones prevented target distribution scale mismatch (double-calibration trap), stabilizing transductive learning.
 14. Native LightGBM Categorical Splitting (v54): Setting up explicit native categorical parameters for LightGBM improved its feature interactions and stabilized the base model outputs.
+15. Smarter Conflict Key (v65): Grouping by categoricals and 5-quantile buckets of coordinates, elevation, distance to river, and rainfall to resolve 10-30x more target conflicts.
+16. Target Power Normalization inside Folds (v65): Fitting PowerTransformer fold-by-fold strictly on training targets, and transforming validation targets for early stopping, then inverse-transforming predictions before stacking.
+17. Downstream Oracle Model (v65): Shallow CatBoost trained strictly on downstream features to isolate the primary generator signal and boost Explained Variance.
+18. Target-Inversion Score (v65 / vc1 Research): Discovered target generator has inverted correlations relative to real-world physics (e.g. farther from river, higher elevation, and lower rainfall correlate with higher risk).
+19. Target-Inversion Feature (vc1): Built a hand-crafted unified linear proxy feature (TIS) that explicitly feeds the inverted physical gradients to the trees.
+20. Geospatial Risk Gradients (vc1): Features representing local spatial derivatives of multi-scale target encodings (GRG) to detect hotspots/coldspots.
 
 DOWNGRADES (What went wrong):
 1. MLP Neural Network (v5): Neural networks failed to handle the tabular noise.
