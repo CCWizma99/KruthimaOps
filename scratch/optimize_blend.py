@@ -6,7 +6,8 @@ import glob
 from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
 
 def competition_score(mae, rmse, ev):
-    return (0.645811 * mae + 0.535795 * rmse) * (1.0 + 0.612783 * (1.0 - ev))
+    # Updated to the 17-point recalibrated simulator formula
+    return (0.535196 * mae + 1.146326 * rmse) * (1.0 + 0.054898 * (1.0 - ev))
 
 def main():
     print("======================================================================")
