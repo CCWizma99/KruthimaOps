@@ -97,9 +97,16 @@ v63_opt  0.178220   0.234080    0.038220  0.383090   0.382890  Pseudo-labels upg
 v64_opt  0.178030   0.233930    0.039420  0.382560   0.382580  Global Yeo-Johnson target transformation + v42 baseline
 v66_opt  0.178310   0.234160    0.037570  —          0.383050  Pseudo-labels upgraded to raw/uncalibrated v42
 v67_opt  0.178030   0.233960    0.039190  0.382160   0.382620  Multi-Seed (2 seeds) + Leak-Free Target Conflict Resolution
-v70_opt  —          —           —         0.382160   —         3-Seed Ensembling + Leak-Free Target Conflict Resolution
-v65_opt  —          —           —         Pending    —         4-Seed Smart Conflict + Yeo-Johnson Stacking + CAT-ORACLE
-vc1_opt  —          —           —         Pending    —         4-Seed Hybrid: TIS + GRG + Stacking Advances (Crazy 01)
+v70_opt  0.178030   0.233950    0.039230  0.382160   0.382620  Optimized 3-Seed + Conflict Resolution (Current Peak)
+v65_opt  0.178250   0.234120    0.037820  —          0.382970  4-Seed Smart Conflict + Yeo-Johnson Stacking + CAT-ORACLE
+v69_opt  0.178240   0.234100    0.038060  —          0.382930  Calibrated 2-Seed Target Power Transform
+v701_opt 0.178660   0.234480    0.034910  —          0.383680  Confidence Pseudo-Weights + LGB-Q70 + Spatial Gradients
+v72_opt  0.178080   0.234000    0.038860  —          0.382710  Optimized v72 with separate target smoothing
+v73_opt  0.178160   0.234060    0.038330  —          0.382840  Optimized v73 with calibrated metric stacker
+v77_opt  0.178060   0.233960    0.039140  —          0.382650  Optimized v77 with calibrated stacker coefficients
+v80_opt  0.178060   0.233960    0.039150  —          0.382640  Optimized v80 with raw pseudo-labels
+vc1_opt  0.178120   0.234020    0.038650  —          0.382760  4-Seed Hybrid: TIS + GRG + Stacking Advances (Crazy 01)
+vc2_opt  0.178130   0.234020    0.038710  —          0.382760  2-Seed Hybrid Stacking + TIS + GRG (Crazy 02)
 
 
 
@@ -413,7 +420,53 @@ KPI SENSITIVITY & TECHNICAL FINDINGS
     - KPI Impact (Optimized): Actual LB=0.382160.
     - Finding: Expanding to 3 seeds further stabilized prediction variance but hit a performance plateau at 0.38216, suggesting the signal from target conflict resolution was already fully extracted.
 
+49. CRAZY ML SCIENTIST STACKING PIPELINE (v65)
+    - Technique: Smarter Conflict Key (categoricals + 5-quantile buckets of continuous variables), separate pseudo-row conflict resolution (protects real targets), Yeo-Johnson target transformation fitted strictly inside fold loop, and 7th base model Oracle trained strictly on downstream features in raw space. Seed-level regularization sweeping across 4 seeds.
+    - KPI Impact (Optimized): MAE=0.178250, RMSE=0.234120, EV=0.037820, Est. LB=0.382970.
+    - Finding: Target conflict smoothing via multi-variable bucket keys resolves duplicate training row contradictions, but Yeo-Johnson scaling inside CV folds did not outperform global scaling due to fold-wise scaling shifts.
+
+50. MULTI-SEED TARGET POWER TRANSFORMATION PIPELINE (v69)
+    - Technique: Overwrites prior unbalanced runs. Inherits v64 (Target Power Transformation + v30 pseudo-labels) and introduces 2-seed ensembling (SEEDS = [42, 100]) to average out fold split noise.
+    - KPI Impact (Optimized): MAE=0.178240, RMSE=0.234100, EV=0.038060, Est. LB=0.382930.
+    - Finding: Averaging out-of-fold predictions across multiple seeds under global Yeo-Johnson normalization stabilizes the regression baseline.
+
+51. CONFIDENCE-WEIGHTED PSEUDO-LABELING & SPATIAL GRADIENTS (v701)
+    - Technique: Group medians computed strictly on real rows and applied back to real rows only. Confidence-weighted pseudo-label weights computed as |pred - 0.5| * 2. Replaces CAT-RMSE with LGB-Quantile(0.7) to inject genuine ensemble diversity. Spatial gradient risk divergence features computed at multi-scale resolutions.
+    - KPI Impact (Optimized): MAE=0.178660, RMSE=0.234480, EV=0.034910, Est. LB=0.383680.
+    - Finding: Quantile-based models and complex spatial gradient calculations overfit spatial GroupKFold partitions, while confidence weighting did not improve generalizability compared to full soft-labeling.
+
+52. UPGRADED SMOOTHING & 3-SEED STACKING (v72)
+    - Technique: Inherits v70 (3-seed stacking) and (1) upgrades pseudo-labels to submission_v67_optimized.csv (LB 0.38216); (2) groups targets by 11 key survey categoricals rather than 72 exact features; (3) performs conflict resolution on real and pseudo-labeled rows independently.
+    - KPI Impact (Optimized): MAE=0.178080, RMSE=0.234000, EV=0.038860, Est. LB=0.382710.
+    - Finding: Performing conflict resolution independently on pseudo-labeled rows maintains test data structure alignment, and using the best optimized pseudo-label source stabilizes prediction mapping on test coordinates.
+
+53. CALIBRATED METRIC, WEIGHTED PSEUDO-LABELS & DIVERSE STACK (v73)
+    - Technique: 3-seed ensembling + leak-free target conflict resolution. Stacker and post-hoc calibration use calibrated coefficients: c_mae = 0.535196, c_rmse = 1.146326, c_ev = 0.054898. Weighted pseudo-labels (weight = 0.8) from submission_v70_optimized.csv. Expanded stack to 8 models by adding LGB-RMSE and XGB-RMSE.
+    - KPI Impact (Optimized): MAE=0.178160, RMSE=0.234060, EV=0.038330, Est. LB=0.382840.
+    - Finding: Adding raw RMSE-loss models (LGB-RMSE, XGB-RMSE) to an absolute error stacker dilutes MAE-loss gradients, and downweighting pseudo-labeled test rows slightly degrades transductive gains.
+
+54. CORRECTED PSEUDO-LABELS, EQUAL WEIGHTING & CALIBRATED METRIC (v77)
+    - Technique: 3-seed ensembling + leak-free target conflict resolution. Metric Coefficients: c_mae = 0.539328, c_rmse = 1.152263, c_ev = 0.048467. Raw Pseudo-Labeling from unoptimized submission_v70.csv, restoring equal weighting (1.0 weight) for all training rows. Maintains 8-model stack.
+    - KPI Impact (Optimized): MAE=0.178060, RMSE=0.233960, EV=0.039140, Est. LB=0.382650.
+    - Finding: Restoring equal weighting and raw uncalibrated pseudo-labels prevents target distribution scale mismatch (double-calibration trap), improving local MAE and EV.
+
+55. CLEAN TARGET CONFLICT RESOLUTION & ROBUST 6-MODEL STACK (v80)
+    - Technique: 3-seed ensembling. Clean Target Conflict Resolution (Geospatial Regularization) applied only to real training rows in the training fold. Restores raw pseudo-labels from submission_v70.csv with equal weighting, and reverts to the robust 6-model stack by removing the weak LGB/XGB RMSE models.
+    - KPI Impact (Optimized): MAE=0.178060, RMSE=0.233960, EV=0.039150, Est. LB=0.382640.
+    - Finding: Restricting target conflict resolution to real rows in the training loop preserves validation split honesty, and reverting to the MAE-focused 6-model stack achieves top-tier OOF scores while reducing computational overhead.
+
+56. HYBRID STACKING: TIS + GRG - CRAZY 01 (vc1)
+    - Technique: Multi-Seed (4 seeds) Stacking. Engineered Target-Inversion Score (TIS): a hand-crafted physical index using inverted physical correlations (distance to river, elevation, rainfall, infrastructure). Geospatial Risk Gradients (GRG): micro-spatial derivatives based on multi-scale target encodings. Separate pseudo-row conflict resolution, Yeo-Johnson transformation inside folds, and 7th base model Oracle.
+    - KPI Impact (Optimized): MAE=0.178120, RMSE=0.234020, EV=0.038650, Est. LB=0.382760.
+    - Finding: Inverted physical relationships exist in the target generator, and combining TIS with multi-scale spatial gradients allows trees to split faster, but the complex 4-seed architecture limits further optimization compared to peak 3-seed runs.
+
+57. EXPERIMENTAL STACKING: TIS + GRG - CRAZY 02 (vc2)
+    - Technique: Multi-Seed (2 seeds) Stacking. Inherits all features of vc1 (TIS + GRG + Downstream Oracle + Yeo-Johnson inside folds) but runs over 2 seeds with soft pseudo-labels loaded from submission_v70.csv.
+    - KPI Impact (Optimized): MAE=0.178130, RMSE=0.234020, EV=0.038710, Est. LB=0.382760.
+    - Finding: Multi-scale spatial derivatives and target inversion proxies provide robust regularizers on synthetic grids, matching vc1 performance with half the training runtime.
+
 ================================================================================
+
 SUMMARY OF CHANGES: UPGRADES VS. DOWNGRADES
 ================================================================================
 
