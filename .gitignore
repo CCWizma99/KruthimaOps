@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# CatBoost telemetry logs
+catboost_info/
+
+# Local model training artifacts & arrays (prevent bloating the repo)
+oof_*.npy
+submissions/oof_*.npy
+fold_report_*.csv
+submissions/fold_report_*.csv
+
+# Submission CSVs (keep actual model code tracked, but not outputs unless explicitly added)
+submission_*.csv
+submissions/submission_*.csv
+
+# OS metadata
+.DS_Store
+Thumbs.db
