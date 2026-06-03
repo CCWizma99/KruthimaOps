@@ -8,6 +8,7 @@ As per the official "ML Opsidian: Genesis" competition guidelines, you must stri
 - **Zero External Resources:** Do NOT install, use, or reference any external datasets, pre-trained models, transfer learning frameworks, or external text/spatial embeddings. Everything must be trained entirely from scratch.
 - **Data Contamination Prevention:** Hard-block any form of data leakage. Never include target variables (`flood_risk_score`), row counts, tracking IDs (`record_id`), or backend columns (`is_synthetic`, `generation_date`) inside the training feature matrix.
 - **No Cross-Project Contamination:** Focus entirely on parsing code and schemas inside the active project folder.
+- **No Real vs. Synthetic Training Differentiation:** Treat all training data rows (both real and synthetic) uniformly. Since evaluation is conducted on synthetic test data, do not apply sample weighting, feature partitioning, or OOF evaluation metrics that prioritize or isolate real rows over synthetic rows.
 
 ## 3. Evaluation Metric & Architectural Tailoring
 The custom undisclosed competition metric relies heavily on two pillars. You must code pipelines to track and optimize both simultaneously:
