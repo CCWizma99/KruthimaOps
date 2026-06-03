@@ -6,7 +6,8 @@ from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explai
 
 # Calibrated competition metric formula
 def competition_score(mae, rmse, ev):
-    return (0.392696 * mae + 0.875527 * rmse) * (1.0 + 0.406963 * (1.0 - ev))
+    # Updated to the 17-point recalibrated simulator formula
+    return (0.535196 * mae + 1.146326 * rmse) * (1.0 + 0.054898 * (1.0 - ev))
 
 def main():
     print("=" * 70)
