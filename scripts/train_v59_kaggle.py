@@ -492,7 +492,7 @@ print(f"      {'Intercept':<18}: {final_stacker.intercept_:.4f}")
 g_mae  = mean_absolute_error(original_y, oof_stacked)
 g_rmse = root_mean_squared_error(original_y, oof_stacked)
 g_ev   = explained_variance_score(original_y, oof_stacked)
-g_lb   = (0.645811 * g_mae + 0.535795 * g_rmse) * (1.0 + 0.612783 * (1.0 - g_ev))
+g_lb   = (0.539328 * g_mae + 1.152263 * g_rmse) * (1.0 + 0.048467 * (1.0 - g_ev))
 
 print("\n" + "=" * 70)
 print("  GLOBAL OOF RESULTS (v59 - High-Efficiency Huber Pipeline)")

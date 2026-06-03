@@ -37,10 +37,10 @@ def competition_score(mae, rmse, ev):
     """
     Compute estimated leaderboard score from MAE, RMSE, EV.
     
-    Derived from 17 known LB submissions via least-squares fitting of multiplicative form:
-      LB = (0.535196 * MAE + 1.146326 * RMSE) * (1.0 + 0.054898 * (1.0 - EV))
+    Derived from 21 known LB submissions via least-squares fitting of multiplicative form:
+      LB = (0.539328 * MAE + 1.152263 * RMSE) * (1.0 + 0.048467 * (1.0 - EV))
     """
-    return (0.535196 * mae + 1.146326 * rmse) * (1.0 + 0.054898 * (1.0 - ev))
+    return (0.539328 * mae + 1.152263 * rmse) * (1.0 + 0.048467 * (1.0 - ev))
 
 
 
@@ -84,12 +84,12 @@ def print_evaluation(result, verbose=True):
     
     if verbose:
         # Component breakdown
-        base_err = 0.535196 * result['MAE'] + 1.146326 * result['RMSE']
-        penalty = 1.0 + 0.054898 * (1.0 - result['EV'])
+        base_err = 0.539328 * result['MAE'] + 1.152263 * result['RMSE']
+        penalty = 1.0 + 0.048467 * (1.0 - result['EV'])
         
         print(f"\n  [COMPONENT BREAKDOWN]")
-        print(f"    Base Error (0.535*MAE + 1.146*RMSE)        : {base_err:.5f}")
-        print(f"    Variance Penalty Factor (1 + 0.055*(1-EV)) : {penalty:.5f}")
+        print(f"    Base Error (0.539*MAE + 1.152*RMSE)        : {base_err:.5f}")
+        print(f"    Variance Penalty Factor (1 + 0.048*(1-EV)) : {penalty:.5f}")
         print(f"    Total (Base Error * Penalty)               : {result['est_LB']:.5f}")
 
         
@@ -101,16 +101,22 @@ def print_evaluation(result, verbose=True):
         # Comparison to known submissions
         print(f"\n  [COMPARISON TO KNOWN LB SCORES]")
         known = [
-            ("Rank 1 target",  0.38215, None),
+            ("Rank 1 target",  0.38037, None),
+            ("v70_optimized",  0.38216, 0.38216),
+            ("v67_optimized",  0.38216, 0.38216),
             ("v42_optimized",  0.38245, 0.38245),
+            ("v64_optimized",  0.38256, 0.38256),
             ("v45_optimized",  0.38272, 0.38272),
             ("v44_optimized",  0.38278, 0.38278),
             ("v30",            0.38293, 0.38293),
             ("v33",            0.38294, 0.38294),
+            ("v60_optimized",  0.38295, 0.38295),
             ("v38_optimized",  0.38298, 0.38298),
+            ("v63_optimized",  0.38309, 0.38309),
             ("v37_optimized",  0.38328, 0.38328),
             ("v20",            0.38331, 0.38331),
             ("v37",            0.38335, 0.38335),
+            ("v54_optimized",  0.38337, 0.38337),
             ("v19",            0.38401, 0.38401),
             ("v23 (overfit)",  0.38411, 0.38411),
             ("v13",            0.38476, 0.38476),
@@ -128,12 +134,16 @@ def print_evaluation(result, verbose=True):
             print(f"    vs {name:<16}: {delta:+.5f} ({status})")
         
         # What would it take to reach rank 1?
-        gap = result['est_LB'] - 0.38215
+        gap = result['est_LB'] - 0.38037
         if gap > 0:
+            d_mae = 0.539328 * (1.0 + 0.048467 * (1.0 - result['EV']))
+            d_rmse = 1.152263 * (1.0 + 0.048467 * (1.0 - result['EV']))
+            d_ev = 0.048467 * (0.539328 * result['MAE'] + 1.152263 * result['RMSE'])
+            
             print(f"\n  [GAP TO RANK 1: {gap:.5f}]")
-            print(f"    Need MAE  decrease: {gap/0.8723:.5f} ({gap/0.8723/result['MAE']*100:.2f}%)")
-            print(f"    Need RMSE decrease: {gap/0.8629:.5f} ({gap/0.8629/result['RMSE']*100:.2f}%)")
-            print(f"    Need EV   increase: {gap/0.0255:.5f} ({gap/0.0255/result['EV']*100:.1f}%)")
+            print(f"    Need MAE  decrease: {gap/d_mae:.5f} ({gap/d_mae/result['MAE']*100:.2f}%)")
+            print(f"    Need RMSE decrease: {gap/d_rmse:.5f} ({gap/d_rmse/result['RMSE']*100:.2f}%)")
+            print(f"    Need EV   increase: {gap/d_ev:.5f} ({gap/d_ev/result['EV']*100:.1f}%)")
         else:
             print(f"\n  ** ESTIMATED TO BEAT RANK 1 by {-gap:.5f}! **")
 
@@ -243,7 +253,10 @@ if __name__ == "__main__":
                 "v30": 0.38293, "v33": 0.38294,
                 "v37": 0.38335, "v37_optimized": 0.38328,
                 "v38_optimized": 0.38298, "v42_optimized": 0.38245,
-                "v44_optimized": 0.38278, "v45_optimized": 0.38272
+                "v44_optimized": 0.38278, "v45_optimized": 0.38272,
+                "v54_optimized": 0.38337, "v60_optimized": 0.38295,
+                "v63_optimized": 0.38309, "v64_optimized": 0.38256,
+                "v67_optimized": 0.38216, "v70_optimized": 0.38216
             }
 
             
@@ -269,7 +282,7 @@ if __name__ == "__main__":
                     err = f"{r['est_LB'] - r['actual_LB']:+.5f}"
                 print(f"  {r['label']:<10} {r['MAE']:>8.5f} {r['RMSE']:>8.5f} {r['EV']:>8.5f} {r['est_LB']:>8.5f} {act:>8} {err:>8}")
             
-            print(f"\n  Rank 1 target: 0.38215")
+            print(f"\n  Rank 1 target: 0.38037")
     
     # Mode 5: Quick score from known versions (hardcoded)
     else:
@@ -298,6 +311,11 @@ if __name__ == "__main__":
             ("v44_optimized",  0.17806, 0.23399, 0.03892, 0.38278),
             ("v45",            0.17814, 0.23403, 0.03863, None),
             ("v45_optimized",  0.17811, 0.23402, 0.03869, 0.38272),
+            ("v54_optimized",  0.17820, 0.23420, 0.03751, 0.38337),
+            ("v60_optimized",  0.17827, 0.23413, 0.03782, 0.38295),
+            ("v63_optimized",  0.17822, 0.23408, 0.03822, 0.38309),
+            ("v64_optimized",  0.17803, 0.23393, 0.03942, 0.38256),
+            ("v67_optimized",  0.17803, 0.23396, 0.03919, 0.38216),
         ]
 
         

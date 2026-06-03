@@ -358,7 +358,7 @@ def fit_metric_stacker(X_meta, y_true, alpha=0.1):
         ev = explained_variance_score(y_true, pred)
         
         # Target metric
-        score = (0.392696 * mae + 0.875527 * rmse) * (1.0 + 0.406963 * (1.0 - ev))
+        score = (0.539328 * mae + 1.152263 * rmse) * (1.0 + 0.048467 * (1.0 - ev))
         # L2 Penalty to preserve ensemble diversity
         reg = alpha * np.sum(w**2)
         return score + reg
@@ -565,7 +565,7 @@ for seed in SEEDS:
         cv_mae = mean_absolute_error(original_y, oof_cv)
         cv_rmse = root_mean_squared_error(original_y, oof_cv)
         cv_ev = explained_variance_score(original_y, oof_cv)
-        cv_score = (0.392696 * cv_mae + 0.875527 * cv_rmse) * (1.0 + 0.406963 * (1.0 - cv_ev))
+        cv_score = (0.539328 * cv_mae + 1.152263 * cv_rmse) * (1.0 + 0.048467 * (1.0 - cv_ev))
         
         if cv_score < best_score:
             best_score = cv_score
@@ -594,7 +594,7 @@ for seed in SEEDS:
 # -----------------------------------------------------------------
 # 7. GLOBAL ENSEMBLE RESULTS & METRICS
 # -----------------------------------------------------------------
-c_mae, c_rmse, c_ev = 0.392696, 0.875527, 0.406963
+c_mae, c_rmse, c_ev = 0.539328, 1.152263, 0.048467
 
 g_mae  = mean_absolute_error(original_y, all_oof_stacked)
 g_rmse = root_mean_squared_error(original_y, all_oof_stacked)
