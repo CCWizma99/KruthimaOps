@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ML Opsidian: Genesis — Dependency Manifest
+# ─────────────────────────────────────────────────────────────────────────────
+# Install everything in one shot:
+#   pip install -r requirements.txt
+#
+# Verified on: Python 3.14.x (Windows) — 2026-05-30
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Core Data & Numerics ──────────────────────────────────────────────────────
+pandas==3.0.3
+numpy==2.4.2
+
+# ── Machine Learning / Modelling ─────────────────────────────────────────────
+scikit-learn==1.8.0       # KFold, MAE, RMSE, explained_variance_score
+xgboost==3.2.0            # XGBRegressor -- NOTE: early_stopping_rounds in constructor, not fit()
+lightgbm==4.6.0           # LGBMRegressor (native categorical support)
+catboost==1.2.10          # CatBoostRegressor (cat_features by name)
+
+# ── Standard Library (no install needed — listed for reference) ──────────────
+# warnings  — built-in
+# time      — built-in
+# csv       — built-in (used in schema inspection only)
