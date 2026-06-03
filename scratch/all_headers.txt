@@ -1,0 +1,778 @@
+
+==================== Initial_trainer.py ====================
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# 1. LOAD DATA
+train_df = pd.read_csv("train.csv")
+test_df = pd.read_csv("test.csv")
+# Hard drop exact duplicates to prevent CV contamination
+# Drop columns that cause severe overfitting or are backend tracking metadata
+# Explicitly list integer columns that represent categorical classifications
+    'district', 'landcover', 'soil_type', 'water_supply', 'electricity', 
+    'flood_occurrence_current_event', 'is_good_to_live', 'reason_not_good_to_live'
+# 2. PREPROCESSING
+        # Using median for numeric imputation to stay robust against outlier spikes
+        median_val = train_df[col].median()
+        train_df[col] = train_df[col].fillna(median_val)
+        test_df[col] = test_df[col].fillna(median_val)
+# Crucial: Keep X and X_test as DataFrames (do not use .values) so XGBoost reads 'category' dtypes
+y = train_df[target_col].values
+# 3. 5-FOLD CROSS VALIDATION FOR REGRESSION
+
+==================== train_v2.py ====================
+"""
+ML Opsidian: Genesis - Full Ensemble Pipeline v2
+=================================================
+Models: XGBoost + LightGBM + CatBoost (equal-weight average)
+CV:     5-Fold KFold (shuffle, seed=42)
+Metric: OOF MAE, RMSE, Explained Variance per fold + overall
+Rules:  AGENTS.md compliant -- no leakage, no external data
+Python: 3.14 (cp1252 terminal -- ASCII-safe prints only)
+"""
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & BASIC DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("train.csv")
+test_df  = pd.read_csv("test.csv")
+# -----------------------------------------------------------------
+# 2. COLUMN TAXONOMY
+# -----------------------------------------------------------------
+# Hard-drop: leakage / metadata / high-cardinality string IDs
+# String categoricals that encode nominal classes -- must stay as 'category'
+    "district", "landcover", "soil_type", "water_supply",
+
+==================== train_v3.py ====================
+"""
+ML Opsidian: Genesis - Full Ensemble Pipeline v3
+=================================================
+Key upgrades from v2:
+  - StratifiedKFold on 10-bin target (stable distribution per fold)
+  - Learning rate 0.02 -> 0.05 (faster exploration before early stop)
+  - Early stop patience 50 -> 100 (more room to find interactions)
+  - KFold-safe target encoding for district + lat/lon spatial grid
+  - 6 new features (16 total engineered, 58 total fed to models)
+  - Per-model X format (XGB=int codes, LGB=Categorical, CAT=string)
+  - Inverse-RMSE weighted ensemble (better models get more weight)
+  - Isotonic regression calibration (fixes prediction range collapse)
+
+XGBoost 3.x + pandas 3.x compatibility notes:
+  - early_stopping_rounds must be in constructor, not fit()
+  - String pd.Categorical causes Arrow columnar dtype error -> use int codes instead
+  - enable_categorical=False for XGBoost, pass .cat.codes as int32 columns
+
+Python: 3.14 / cp1252 terminal -- ASCII-safe prints only
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("train.csv")
+test_df  = pd.read_csv("test.csv")
+# -----------------------------------------------------------------
+# 2. COLUMN TAXONOMY
+
+==================== train_v3_5.py ====================
+"""
+ML Opsidian: Genesis - Full Ensemble Pipeline v3
+=================================================
+Key upgrades from v2:
+  - StratifiedKFold on 10-bin target (stable distribution per fold)
+  - Learning rate 0.02 -> 0.05 (faster exploration before early stop)
+  - Early stop patience 50 -> 100 (more room to find interactions)
+  - KFold-safe target encoding for district + lat/lon spatial grid
+  - 6 new features (16 total engineered, 58 total fed to models)
+  - Per-model X format (XGB=int codes, LGB=Categorical, CAT=string)
+  - Inverse-RMSE weighted ensemble (better models get more weight)
+  - Isotonic regression calibration (fixes prediction range collapse)
+
+XGBoost 3.x + pandas 3.x compatibility notes:
+  - early_stopping_rounds must be in constructor, not fit()
+  - String pd.Categorical causes Arrow columnar dtype error -> use int codes instead
+  - enable_categorical=False for XGBoost, pass .cat.codes as int32 columns
+
+Python: 3.14 / cp1252 terminal -- ASCII-safe prints only
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("train.csv")
+test_df  = pd.read_csv("test.csv")
+# -----------------------------------------------------------------
+# 2. COLUMN TAXONOMY
+
+==================== train_v4.py ====================
+"""
+ML Opsidian: Genesis - Full Ensemble Pipeline v3
+=================================================
+Key upgrades from v2:
+  - StratifiedKFold on 10-bin target (stable distribution per fold)
+  - Learning rate 0.02 -> 0.05 (faster exploration before early stop)
+  - Early stop patience 50 -> 100 (more room to find interactions)
+  - KFold-safe target encoding for district + lat/lon spatial grid
+  - 6 new features (16 total engineered, 58 total fed to models)
+  - Per-model X format (XGB=int codes, LGB=Categorical, CAT=string)
+  - Inverse-RMSE weighted ensemble (better models get more weight)
+  - Isotonic regression calibration (fixes prediction range collapse)
+
+XGBoost 3.x + pandas 3.x compatibility notes:
+  - early_stopping_rounds must be in constructor, not fit()
+  - String pd.Categorical causes Arrow columnar dtype error -> use int codes instead
+  - enable_categorical=False for XGBoost, pass .cat.codes as int32 columns
+
+Python: 3.14 / cp1252 terminal -- ASCII-safe prints only
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("train.csv")
+test_df  = pd.read_csv("test.csv")
+# -----------------------------------------------------------------
+# 2. COLUMN TAXONOMY
+
+==================== train_v5.py ====================
+"""
+ML Opsidian: Genesis - Deep Non-Linearity & Noise Pruning (v5)
+==============================================================
+Emergency Pivot Strategy:
+  - Models: Neural Network (MLPRegressor) and Ridge (Linear Baseline)
+  - Preprocessing: One-Hot Encoding + StandardScaler
+  - Noise Pruning: Lasso (L1) Feature Selection to drop dead weight
+  - Loss: MLP uses MSE (Adam optimizer), Ridge uses MSE.
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Lasso, Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("train.csv")
+test_df  = pd.read_csv("test.csv")
+# -----------------------------------------------------------------
+# 2. FEATURE ENGINEERING
+# -----------------------------------------------------------------
+    df["river_rain_interaction"]  = df["distance_to_river_m_log1p"] * df["rainfall_7d_mm_log1p"]
+    df["river_monthly_exposure"]  = df["distance_to_river_m_log1p"] * df["monthly_rainfall_mm_log1p"]
+    df["elev_rain_risk"]          = df["elevation_m_yeojohnson"] / (df["rainfall_7d_mm_log1p"] + 1e-6)
+
+==================== train_v6.py ====================
+"""
+ML Opsidian: Genesis - Ground Truth Isolation (v6)
+==================================================
+Emergency Pivot Strategy:
+  - Isolate the 802 rows of real ground-truth data (is_synthetic=NaN).
+  - Apply 50x sample weight to real data during training to force trees to ignore synthetic noise.
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("train.csv")
+test_df  = pd.read_csv("test.csv")
+# -----------------------------------------------------------------
+# 2. COLUMN TAXONOMY
+# -----------------------------------------------------------------
+    "district", "landcover", "soil_type", "water_supply",
+    "water_presence_flag", "flood_occurrence_current_event",
+    "is_good_to_live", "reason_not_good_to_live", "elevation_tier"
+
+==================== train_v7.py ====================
+"""
+ML Opsidian: Genesis - Full Ensemble Pipeline v3
+=================================================
+Key upgrades from v2:
+ML Opsidian: Genesis - High Variance Architecture (v7)
+======================================================
+Emergency Pivot Strategy:
+  - XGBoost: Switched to DART booster with dropout to prevent early collapse.
+  - ExtraTrees: Added to ensemble to inject massive variance into splits.
+  - LightGBM & CatBoost: Lowered learning rates (0.005/0.01) and increased trees to 10k.
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.ensemble import ExtraTreesRegressor
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("train.csv")
+test_df  = pd.read_csv("test.csv")
+# -----------------------------------------------------------------
+# 2. COLUMN TAXONOMY
+# -----------------------------------------------------------------
+    "district", "landcover", "soil_type", "water_supply",
+
+==================== train_v8_pivot.py ====================
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# 1. LOAD DATA
+train_df = pd.read_csv("train.csv")
+test_df = pd.read_csv("test.csv")
+# 2. THE PIVOT: Retain ONLY the generative columns and key spatial anchors
+    'flood_occurrence_current_event', 
+    'is_good_to_live', 
+    'reason_not_good_to_live'
+# Retaining district as a broad geographic regularizer
+# 3. INTERACTION SIGNAL ENGINEERING
+print("[INFO] Constructing the generative key signature...")
+    # Combine categorical indicators into a unique logical signature
+        df['flood_occurrence_current_event'].astype(str) + "_" +
+        df['is_good_to_live'].astype(str) + "_" +
+        df['reason_not_good_to_live'].astype(str)
+    # Contextualize inundation area relative to its specific failure reason
+# Append our newly engineered features to the feature list
+# Cast categorical columns explicitly for XGBoost native handling
+categorical_cols = ['flood_occurrence_current_event', 'is_good_to_live', 'reason_not_good_to_live', 'district', 'downstream_sig']
+
+==================== train_v9_fingerprint.py ====================
+from sklearn.model_selection import KFold
+from sklearn.metrics import explained_variance_score
+train_df = pd.read_csv('train.csv')
+test_df = pd.read_csv('test.csv')
+# Prep Target
+y = train_df['flood_risk_score'].values
+y_synth = train_df['is_synthetic'].fillna(False).astype(int).values
+# Prep Features
+# Categoricals
+# --- STAGE 1: META-FEATURE GENERATION (Synthetic Fingerprint) ---
+for fold, (train_idx, val_idx) in enumerate(kf.split(X)):
+    X_va = X.iloc[val_idx]
+    clf = XGBClassifier(n_estimators=300, enable_categorical=True, random_state=42, eval_metric='logloss')
+    oof_synth_prob[val_idx] = clf.predict_proba(X_va)[:, 1]
+# --- STAGE 2: MAIN REGRESSOR ---
+
+==================== train_v10.py ====================
+"""
+ML Opsidian: Genesis - Full Ensemble Pipeline v10
+=================================================
+Key upgrades from v3:
+  - Addressed highly skewed `inundation_area_sqm` (skew=3.06) with np.log1p
+  - Added interaction feature: flood_occurrence_yes * log(inundation_area)
+  - Updated data paths to data/train.csv
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 2. COLUMN TAXONOMY
+# -----------------------------------------------------------------
+    "district", "landcover", "soil_type", "water_supply",
+    "water_presence_flag", "flood_occurrence_current_event",
+    "is_good_to_live", "reason_not_good_to_live"
+
+==================== train_v11_engineered.py ====================
+"""
+ML Opsidian: Genesis - Advanced Feature Engineering Pipeline v11
+=================================================================
+This script implements:
+  - Geospatial Hot-Deck Imputation (Place+District matching & Spatial KNN)
+  - Climatological & Hydrological engineered features:
+      * Monsoon Impact Score (Wet/Dry zones x Yala/Maha monsoons)
+      * Urban Pluvial vs Rural Fluvial Runoff Engine
+      * Soil Sponge Infiltration Physics
+      * Slope Proxies, TWI, and Flatness Indices
+      * Outlier residuals & Vulnerability Crosses
+  - KFold-safe out-of-fold target encoding for district, grid_id, downstream_sig, and infra_deficit_sig
+  - Stratified 5-Fold Ensemble (XGBoost, LightGBM, CatBoost)
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 2. GEOSPATIAL HOT-DECK IMPUTATION
+# -----------------------------------------------------------------
+# Combine train and test to build the largest possible coordinate donor pool
+
+==================== train_v12_calibrated.py ====================
+"""
+ML Opsidian: Genesis - Calibrated Feature Engineering Pipeline v12
+===================================================================
+Implements ALL remaining features from data_discussion_notes (Sections 5-9):
+
+  NEW FEATURES (on top of v11):
+    - Water Pooling Accumulator    : ndwi * extreme_weather_index
+    - Socio-Economic Deficit       : (1/socioeconomic_status_index) * extreme_weather_index
+    - Seasonal Rain Anomaly        : rainfall_7d_mm * seasonal_index (Section 6)
+    - Inundation Deviational Ratio : inundation_area / landcover_mean_inundation (Section 5)
+    - Runoff Engine (simple)       : built_up_percent * rainfall_7d_mm (Section 7)
+    - Soil Saturation (Section 7)  : rainfall_7d_mm * (1.0 - drainage_index) [already in v11]
+
+  HYPERPARAMETER CALIBRATION (Section 9):
+    - Ground-Truth Sample Weighting: Real rows -> 25.0, Synthetic -> 1.0
+    - Shallower Trees              : max_depth 4-5 (down from 7)
+    - Micro Learning Rates         : 0.01 (down from 0.05)
+    - High Patience                : early_stopping_rounds=150 (up from 100)
+    - Enhanced L2 Regularization   : reg_lambda increased
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v12 - CALIBRATED FEATURE ENGINEERING PIPELINE")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+
+==================== train_v13_stacked.py ====================
+"""
+ML Opsidian: Genesis - Pruned + Stacked Pipeline v13
+=====================================================
+Strategy: Combine all three insights from v12 post-mortem:
+
+  1. PRUNE & FOCUS: Revert to v11-proven hyperparameters (depth=7, LR=0.05,
+     no sample weighting). Remove noise features via automatic importance
+     thresholding after a quick pre-selection pass.
+
+  2. STACKING: Add a second-level Ridge meta-learner that learns optimal
+     blending weights from the 3 base models' OOF predictions. This replaces
+     naive inverse-RMSE averaging with a learned combination.
+
+  3. TARGET ENCODING EXPANSION: Add smoothed Bayesian target encodings for
+     landcover, soil_type, water_supply, electricity, road_quality (beyond
+     just district/grid/downstream/infra_deficit).
+
+  4. INUNDATION RATIO: Keep the one v12 feature with solid physical grounding
+     (normalized by landcover class mean). Drop the 4 noise features.
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v13 - PRUNED + STACKED PIPELINE")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+
+==================== train_v14_multicat.py ====================
+"""
+ML Opsidian: Genesis - Multi-CatBoost Stacked Pipeline v14
+============================================================
+Building on v13's breakthrough (0.38476 public score):
+
+  1. TRIPLE-CATBOOST + XGBOOST ENSEMBLE:
+     - CatBoost-A: depth=7, lr=0.05  (proven v13 winner, 91% Ridge weight)
+     - CatBoost-B: depth=5, lr=0.03  (shallower, different perspective)
+     - CatBoost-C: depth=9, lr=0.08  (deeper, aggressive splits)
+     - XGBoost:    depth=7, lr=0.05  (algorithmic diversity, 16% Ridge weight)
+     - LightGBM DROPPED (was 1% weight = dead weight)
+
+  2. TARGET ENCODING VARIANCE & COUNT:
+     - Add std(flood_risk_score) per group as volatility signal
+     - Add count per group as reliability signal
+     - For: district, downstream_sig, grid_id, infra_deficit_sig
+
+  3. Ridge meta-learner stacking on 4 base model OOF predictions.
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v14 - MULTI-CATBOOST STACKED PIPELINE")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+
+==================== train_v15_spatial.py ====================
+"""
+ML Opsidian: Genesis - Spatial Intelligence Pipeline v15
+=========================================================
+Inspired by re-reading the competition description:
+
+  "flood risk in Sri Lanka is NOT random. It follows repeating
+   environmental and geographical patterns that develop over time."
+
+  NEW STRATEGIES:
+  1. SPATIAL KNN RISK FEATURE: Predict each row's flood_risk from its
+     K nearest geographic neighbors. Directly encodes "repeating
+     geographical patterns." Computed via OOF to prevent leakage.
+
+  2. ADVERSARIAL VALIDATION: Train a classifier to distinguish train
+     vs test. Diagnose data drift. If drift exists, use P(is_test) as
+     sample weights to focus models on test-like training rows.
+
+  3. FINER SPATIAL BINS: 0.1-degree grid (~11km) instead of 0.5-degree
+     (~55km) for target encoding. Captures within-district patterns.
+
+  4. MULTI-SEED CATBOOST: 2x CatBoost-B (depth=5, best individual)
+     with different seeds + CatBoost-A (depth=7) + XGBoost.
+     Ridge stacking on 4 models.
+
+  BASE: All v14 features, Bayesian TE (mean+std+count), Ridge stacking.
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+import lightgbm as lgb  # Used only for adversarial validation
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v15 - SPATIAL INTELLIGENCE PIPELINE")
+
+==================== train_v16_calibration.py ====================
+"""
+ML Opsidian: Genesis - Calibration & Loss Diversity Pipeline v16
+================================================================
+Focusing on the "Balanced Error Assessment" and "Explained Variance"
+multiplicative penalty.
+
+RMSE models minimize the mean of squared errors, which inherently 
+compresses prediction variance to avoid large outlier penalties.
+MAE models minimize the median, which creates a different error 
+distribution and preserves different variance characteristics.
+
+By including an MAE-optimized CatBoost in the Level-1 ensemble, 
+we give the Level-2 Ridge meta-learner a richer "loss landscape" 
+to blend from, directly targeting the custom metric's dual nature.
+
+Base: v14 (proven features, Bayesian TE, depth=5/7 CatBoosts).
+Dropped: v15 failed experiments (spatial KNN, adversarial weights).
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v16 - CALIBRATION & LOSS DIVERSITY")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 2. GEOSPATIAL HOT-DECK IMPUTATION (v14 style)
+# -----------------------------------------------------------------
+
+==================== train_v17_lossdiv.py ====================
+"""
+ML Opsidian: Genesis - Loss Diversity Maximizer v17
+====================================================
+v16 proved MAE-loss CatBoost is the best individual model on ALL metrics
+(RMSE=0.23472, MAE=0.17889, EV=0.03335) with 75% Ridge weight.
+
+v17 doubles down: 3x MAE-loss CatBoosts (seed/depth diversity) +
+Huber loss (intermediate MAE/RMSE) + RMSE anchor + XGBoost.
+6 models → Ridge meta-learner.
+
+MODEL LINEUP:
+  1. XGB        (d7, RMSE)           — algorithmic diversity
+  2. CAT-MAE-1  (d5, lr=0.05, MAE)  — star player (v16 winner)
+  3. CAT-MAE-2  (d5, lr=0.03, MAE)  — slower LR, seed diversity
+  4. CAT-MAE-3  (d7, lr=0.05, MAE)  — depth diversity
+  5. CAT-Huber  (d5, Huber:δ=0.5)   — intermediate loss landscape
+  6. CAT-RMSE   (d5, lr=0.03, RMSE) — loss anchor for Ridge balance
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v17 - LOSS DIVERSITY MAXIMIZER")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 2. GEOSPATIAL HOT-DECK IMPUTATION
+
+==================== train_v18_puremae.py ====================
+"""
+ML Opsidian: Genesis - Pure MAE Ensemble v18
+==============================================
+v17 proved definitively:
+  - MAE-Only Average (3 models) beat Ridge Stacked (6 models)
+  - Ridge assigned NEGATIVE weights to RMSE (-0.28) and Huber (-0.08)
+  - RMSE loss is the WRONG objective for this competition metric
+
+v18: Drop everything except MAE-loss CatBoost. Run 5 diverse MAE 
+CatBoosts across depths 4/5/6/7, learning rates 0.03/0.04/0.05, 
+5 different seeds. Simple average all 5.
+
+MODEL LINEUP (all CatBoost, all MAE loss):
+  1. CAT-MAE-A  (d4, lr=0.03, s42)  — shallowest, most regularized
+  2. CAT-MAE-B  (d5, lr=0.03, s123) — proven best config from v17
+  3. CAT-MAE-C  (d5, lr=0.05, s789) — faster LR, v16 star player
+  4. CAT-MAE-D  (d6, lr=0.04, s456) — intermediate depth
+  5. CAT-MAE-E  (d7, lr=0.05, s321) — deepest, captures complex interactions
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v18 - PURE MAE ENSEMBLE")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 2. GEOSPATIAL HOT-DECK IMPUTATION
+
+==================== train_v19_goldilocks.py ====================
+"""
+ML Opsidian: Genesis v19 - Metric-Informed Goldilocks
+======================================================
+REVERSE-ENGINEERED METRIC:
+  LB = -22.87*MAE + 6.60*RMSE + 3.03*(1-EV)
+
+KEY INSIGHT: MAE has 3.46x the weight of RMSE.
+GAP TO RANK 1: only 0.00011 MAE improvement needed.
+
+STRATEGY:
+  - XGBoost with MAE loss (objective='reg:absoluteerror')
+    => Algo diversity + directly optimizes the dominant metric term
+  - CatBoost-MAE-1 (d5, lr=0.03, s42) -- v17's best individual model
+  - CatBoost-MAE-2 (d5, lr=0.05, s789) -- seed diversity
+  - CatBoost-RMSE (d5, lr=0.03, s123) -- loss diversity anchor
+  - Ridge stacking (proven for generalization)
+
+WHY THIS SHOULD WIN:
+  v13 (best LB): XGB(RMSE) + LGB(RMSE) + CAT(RMSE) => Ridge
+  v17 (best local): 3x CAT(MAE) => simple average
+  v19: XGB(MAE!) + 2x CAT(MAE) + CAT(RMSE) => Ridge
+       = v13's algorithm diversity + v17's MAE insight
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v19 - METRIC-INFORMED GOLDILOCKS")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+
+==================== train_v20_advanced.py ====================
+"""
+ML Opsidian: Genesis v20 - Advanced MLOps Techniques
+======================================================
+Enhancements:
+1. Precision Fingerprint (lat_decimal_len, lon_decimal_len)
+2. Target Quantile Encoding (25th and 75th percentiles)
+3. Semi-Supervised Pseudo-Labeling (from v19 predictions)
+4. Spatial GroupKFold (by grid_id) to prevent spatial leakage
+"""
+from sklearn.model_selection import GroupKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v20 - ADVANCED MLOPS")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 1.5. SYNTHETIC FINGERPRINT & PSEUDO-LABELING
+# -----------------------------------------------------------------
+print("\n[SEMI-SUPERVISED] Pseudo-Labeling from v19...")
+if os.path.exists("submissions/submission_v19.csv"):
+
+==================== train_v21_phase3.py ====================
+"""
+ML Opsidian: Genesis v21 - Phase 3 (Representation Learning & Advanced MLOps)
+=============================================================================
+Enhancements over v20:
+1. 3D Topographical Clustering (Replaces grid_id with K-Means on lat/lon/elev)
+2. Denoising Autoencoder (Extracts 16-dim bottleneck from corrupted inputs)
+3. RankGauss Target Normalization (Forces target to normal distribution for trees)
+"""
+from sklearn.model_selection import GroupKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v21 - PHASE 3 ADVANCED MLOPS")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 1.5. SYNTHETIC FINGERPRINT & PSEUDO-LABELING
+# -----------------------------------------------------------------
+
+==================== train_v22_multiseed.py ====================
+"""
+ML Opsidian: Genesis v22 - Multi-Seed Averaging & Stable Feature Restore
+========================================================================
+Enhancements over v21:
+1. Reverted to stable v20 feature engineering (using grid_id spatial regularizer).
+2. Dropped underperforming representation learning (DAE features, RankGauss target scaling, topo clustering).
+3. Implemented Multi-Seed OOF averaging across 3 distinct seeds to minimize variance.
+"""
+from sklearn.model_selection import GroupKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v22 - MULTI-SEED ENSEMBLE")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 1.5. SYNTHETIC FINGERPRINT & PSEUDO-LABELING
+# -----------------------------------------------------------------
+print("\n[SEMI-SUPERVISED] Pseudo-Labeling from v20...")
+if os.path.exists("submissions/submission_v20.csv"):
+    sub_v20 = pd.read_csv("submissions/submission_v20.csv")
+    test_pseudo = test_df.merge(sub_v20, on="record_id", how="left")
+
+==================== train_v23.py ====================
+"""
+ML Opsidian: Genesis v23 - Median Align, Multi-Seed & Interaction Synergy
+========================================================================
+Enhancements over v20:
+1. Median-Based Target Encoding (Alignment with MAE)
+2. Target Variance Feature (Uncertainty Calibration)
+3. Composite Interaction Features (Granular Geography)
+4. CatBoost max_ctr_complexity=2 (Internal Interactions)
+5. Multi-Seed Averaging (Variance Reduction, seeds: 42, 123, 456, 789)
+6. Update pseudo-label source from v19 -> v20 (window 0.45-0.50)
+7. Positive constraint on Ridge Level-2 stacker
+"""
+from sklearn.model_selection import GroupKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v23 - TARGETED 7-POINT UPGRADE")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 1.5. SYNTHETIC FINGERPRINT & PSEUDO-LABELING
+# -----------------------------------------------------------------
+
+==================== train_v24.py ====================
+"""
+ML Opsidian: Genesis v24 - Median Align, Multi-Seed & Interaction Synergy
+========================================================================
+Enhancements over v20:
+1. Median-Based Target Encoding (Alignment with MAE)
+2. Target Variance Feature (Uncertainty Calibration)
+3. Composite Interaction Features (Granular Geography)
+4. CatBoost max_ctr_complexity=2 (Internal Interactions)
+5. Multi-Seed Averaging (Variance Reduction, seeds: 42, 123, 456, 789)
+6. Update pseudo-label source from v19 -> v20 (window 0.45-0.50)
+7. Positive constraint on Ridge Level-2 stacker
+"""
+from sklearn.model_selection import GroupKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v24 - TARGETED OVERFIT ROLLBACK")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 1.5. SYNTHETIC FINGERPRINT & PSEUDO-LABELING
+# -----------------------------------------------------------------
+
+==================== train_v24_kaggle.py ====================
+# =================================================================
+# MONOLITHIC KAGGLE PIPELINE (v19 -> v20 -> v24)
+# Zero external files required. End-to-end pseudo-label generation.
+# =================================================================
+"""
+ML Opsidian: Genesis v19 - Metric-Informed Goldilocks
+======================================================
+REVERSE-ENGINEERED METRIC:
+  LB = -22.87*MAE + 6.60*RMSE + 3.03*(1-EV)
+
+KEY INSIGHT: MAE has 3.46x the weight of RMSE.
+GAP TO RANK 1: only 0.00011 MAE improvement needed.
+
+STRATEGY:
+  - XGBoost with MAE loss (objective='reg:absoluteerror')
+    => Algo diversity + directly optimizes the dominant metric term
+  - CatBoost-MAE-1 (d5, lr=0.03, s42) -- v17's best individual model
+  - CatBoost-MAE-2 (d5, lr=0.05, s789) -- seed diversity
+  - CatBoost-RMSE (d5, lr=0.03, s123) -- loss diversity anchor
+  - Ridge stacking (proven for generalization)
+
+WHY THIS SHOULD WIN:
+  v13 (best LB): XGB(RMSE) + LGB(RMSE) + CAT(RMSE) => Ridge
+  v17 (best local): 3x CAT(MAE) => simple average
+  v19: XGB(MAE!) + 2x CAT(MAE) + CAT(RMSE) => Ridge
+       = v13's algorithm diversity + v17's MAE insight
+"""
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+
+==================== train_v25.py ====================
+"""
+ML Opsidian: Genesis v25 - Pure Statistical Foundation
+========================================================================
+Enhancements over v20:
+1. Median-Based Target Encoding (Alignment with MAE)
+2. Target Variance Feature (Uncertainty Calibration)
+3. Composite Interaction Features (Granular Geography)
+4. CatBoost max_ctr_complexity=2 (Internal Interactions)
+5. Multi-Seed Averaging (Variance Reduction, seeds: 42, 123, 456, 789)
+6. Update pseudo-label source from v19 -> v20 (window 0.45-0.50)
+7. Positive constraint on Ridge Level-2 stacker
+"""
+from sklearn.model_selection import GroupKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v25 - PURE STATISTICAL FOUNDATION")
+train_df = pd.read_csv("data/train.csv")
+test_df  = pd.read_csv("data/test.csv")
+# -----------------------------------------------------------------
+# 1.5. SYNTHETIC FINGERPRINT & PSEUDO-LABELING
+# -----------------------------------------------------------------
+
+==================== train_v25_kaggle.py ====================
+"""
+ML Opsidian: Genesis v25 - Pure Statistical Foundation
+========================================================================
+Enhancements over v20:
+1. Median-Based Target Encoding (Alignment with MAE)
+2. Target Variance Feature (Uncertainty Calibration)
+3. Composite Interaction Features (Granular Geography)
+4. CatBoost max_ctr_complexity=2 (Internal Interactions)
+5. Multi-Seed Averaging (Variance Reduction, seeds: 42, 123, 456, 789)
+6. Update pseudo-label source from v19 -> v20 (window 0.45-0.50)
+7. Positive constraint on Ridge Level-2 stacker
+"""
+from sklearn.model_selection import GroupKFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+# -----------------------------------------------------------------
+# 1. LOAD & DEDUPLICATE
+# -----------------------------------------------------------------
+print("  ML OPSIDIAN v25 - PURE STATISTICAL FOUNDATION")
+train_df = pd.read_csv(os.path.join(DATA_DIR, "train.csv"))
+test_df  = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
+# -----------------------------------------------------------------
+# 1.5. SYNTHETIC FINGERPRINT & PSEUDO-LABELING
+# -----------------------------------------------------------------
+
+==================== train_real_physics.py ====================
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
+from sklearn.linear_model import Ridge
+from sklearn.ensemble import RandomForestRegressor
+train_df = pd.read_csv("data/train.csv")
+# 1. Purge Downstream Leakage & Synthetic Artifacts
+    # DOWNSTREAM LEAKAGES (Surveys/Events recorded AFTER the disaster)
+    "flood_occurrence_current_event", 
+    "is_good_to_live", 
+    "reason_not_good_to_live",
+    "historical_flood_count" # Arguably a physical feature, but heavily correlated with downstream events. Let's keep it for now.
+# 2. Define Physical Feature Sets
+    "district", "landcover", "soil_type", "water_supply", 
+# Simple Imputation
