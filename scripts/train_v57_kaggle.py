@@ -1,18 +1,26 @@
 """
-ML Opsidian: Genesis v55 - EV-Objective, Conflict Resolution & Spatial Residuals
-==============================================================================
-Upgrades from v52:
-1. Custom EV-MAE Objective on XGBoost models.
-2. Pre-processing Conflict Resolution (target smoothing) for feature-duplicate contradictions.
-3. Hierarchical Spatial Encoding Residuals (replacing raw fine grid target encodings with deltas).
+ML Opsidian: Genesis v57 - EV-Optimized & Stable Custom Stacking Pipeline
+==========================================================================
+Upgrades and Fixes from v54:
+1. Global-Only Calibration (Reverting Group-Specific Power Transforms):
+   - Group-specific calibration caused severe overfitting on small slices. Reverted to a single global calibration curve.
+2. EV-Prioritizing Stacker & Calibration:
+   - Configures L2 stacker and global calibration loss function with weights from v42:
+     c_mae = 0.392696, c_rmse = 0.875527, c_ev = 0.406963.
+   - Puts a massive penalty on Explained Variance (EV) to align with actual LB scoring and act as a powerful regularizer.
+3. Stable Feature & Model Core:
+   - Keeps the 6 stable base models from v42/v45.
+   - Removes experimental target conflict resolution (target smoothing) to preserve downstream signals.
+   - Removes quantile dispersion features and LOO target encodings to prevent stacker overfitting.
+4. High-Quality Pseudo-Labeling:
+   - Uses submission_v42_optimized.csv (our best Public LB score at 0.38245) as the soft pseudo-label source.
 """
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import GroupKFold, StratifiedKFold
+from sklearn.model_selection import GroupKFold
 from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.preprocessing import StandardScaler, QuantileTransformer
 from scipy.optimize import minimize
 import xgboost as xgb
 import catboost as cb
@@ -32,9 +40,6 @@ warnings.filterwarnings("ignore")
 # -----------------------------------------------------------------
 USE_PSEUDO = True
 SEED = 42
-QUANTILE_ALPHAS = [0.40, 0.45, 0.50, 0.55, 0.60]
-USE_BLEND = True  # Enabled for v55
-USE_ADVERSARIAL_WEIGHTS = False  # Toggle to correct spatial covariate shift
 
 # Automatic GPU Detection
 HAS_GPU = False
@@ -50,7 +55,7 @@ XGB_DEVICE = "cuda" if HAS_GPU else "cpu"
 print(f"GPU Configured: {HAS_GPU} (CatBoost: {CB_TASK_TYPE}, XGBoost: {XGB_DEVICE})")
 
 print("=" * 75)
-print("  ML OPSIDIAN v55 - EV-OBJECTIVE, CONFLICT RESOLUTION & SPATIAL RESIDUALS")
+print("  ML OPSIDIAN v57 - EV-OPTIMIZED & STABLE CUSTOM STACKING")
 print("=" * 75)
 
 # -----------------------------------------------------------------
@@ -71,37 +76,38 @@ for df in [train_df, test_df]:
     df['lon_decimal_len'] = df['longitude'].apply(lambda x: len(str(x).split('.')[1]) if '.' in str(x) and str(x).lower() != 'nan' else 0)
 
 # -----------------------------------------------------------------
-# 1.6. SEMI-SUPERVISED PSEUDO-LABELING (v55 priority)
+# 1.6. SEMI-SUPERVISED PSEUDO-LABELING
 # -----------------------------------------------------------------
 print(f"\n[SEMI-SUPERVISED] Pseudo-Labeling configuration: USE_PSEUDO={USE_PSEUDO}")
 train_df['is_pseudo'] = 0
 test_df['is_pseudo'] = 0
 
 if USE_PSEUDO:
-    # Priority chain: v49 -> v48 -> v45 -> v42 -> v30
-    pseudo_paths_to_try = [
-        "submission_v49.csv", "submissions/submission_v49.csv",
-        "submission_v48.csv", "submissions/submission_v48.csv",
-        "submission_v45.csv", "submissions/submission_v45.csv",
-        "submission_v42.csv", "submissions/submission_v42.csv",
-        "submissions/submission_v30.csv", "submission_v30.csv"
-    ]
+    # Use submission_v42_optimized.csv (our best Public LB score at 0.38245)
+    pseudo_path = "submission_v42_optimized.csv"
+    if not os.path.exists(pseudo_path):
+        pseudo_path = "submissions/submission_v42_optimized.csv"
     
-    pseudo_path_used = None
-    for path in pseudo_paths_to_try:
-        if os.path.exists(path):
-            pseudo_path_used = path
-            break
+    # Fallback chains
+    if not os.path.exists(pseudo_path):
+        pseudo_path = "submission_v42.csv"
+        if not os.path.exists(pseudo_path):
+            pseudo_path = "submissions/submission_v42.csv"
             
-    if pseudo_path_used:
-        sub_blend = pd.read_csv(pseudo_path_used)
+    if not os.path.exists(pseudo_path):
+        pseudo_path = "submission_v30.csv"
+        if not os.path.exists(pseudo_path):
+            pseudo_path = "submissions/submission_v30.csv"
+    
+    if os.path.exists(pseudo_path):
+        sub_blend = pd.read_csv(pseudo_path)
         test_pseudo = test_df.merge(sub_blend, on="record_id", how="left")
         
         # Soft pseudo-labeling of all test rows
         pseudo_rows = test_pseudo.copy()
         pseudo_rows['is_pseudo'] = 1
         
-        print(f"   Added {len(pseudo_rows)} soft pseudo-labeled rows from {pseudo_path_used}.")
+        print(f"   Added {len(pseudo_rows)} soft pseudo-labeled rows from {pseudo_path}.")
         train_df = pd.concat([train_df, pseudo_rows], ignore_index=True)
     else:
         print("   [WARNING] No pseudo-label source found. Skipping pseudo-labeling.")
@@ -139,7 +145,7 @@ for col in ['elevation_m', 'distance_to_river_m', 'latitude', 'longitude']:
 print("   Done.")
 
 # -----------------------------------------------------------------
-# 3. FEATURE ENGINEERING (v55 Additions)
+# 3. FEATURE ENGINEERING
 # -----------------------------------------------------------------
 print("\n[FEAT] Engineering features...")
 district_elev_std = combined.groupby('district')['elevation_m'].std().to_dict()
@@ -147,12 +153,6 @@ landcover_mean_inundation = combined.groupby('landcover')['inundation_area_sqm']
 soil_infilt_map = {'Sandy': 0.8, 'Loamy': 0.6, 'Silty': 0.4, 'Clay': 0.2, 'Peaty': 0.1}
 cyclone_districts = {'Batticaloa', 'Trincomalee', 'Ampara', 'Mullaitivu', 'Jaffna'}
 wet_zone_districts = {'Colombo', 'Gampaha', 'Kalutara', 'Galle', 'Matara', 'Ratnapura', 'Kegalle'}
-
-# Fit inundation quantiles globally for consistency
-combined_inun = pd.concat([train_df['inundation_area_sqm'], test_df['inundation_area_sqm']])
-inun_bins = np.unique(np.percentile(combined_inun[combined_inun > 0], np.linspace(0, 100, 11)))
-if len(inun_bins) < 2:
-    inun_bins = [0, 1e9]
 
 def engineer_features(df):
     df = df.copy()
@@ -184,13 +184,6 @@ def engineer_features(df):
         df['is_good_to_live'].fillna('missing').astype(str).str.strip() + "_" +
         df['reason_not_good_to_live'].fillna('missing').astype(str).str.strip()
     )
-    
-    # [v55] Compound downstream district signature
-    df['downstream_district_sig'] = df['downstream_sig'] + "_" + df['district'].fillna('missing').astype(str).str.strip()
-    
-    # [v55] Inundation quantile bucket feature
-    df['inundation_qbin'] = pd.cut(df['inundation_area_sqm'], bins=[-np.inf] + list(inun_bins) + [np.inf], labels=False, duplicates='drop').fillna(-1).astype(int)
-    df['inundation_sig'] = df['inundation_qbin'].astype(str) + "_" + df['flood_occurrence_current_event'].fillna('missing').astype(str).str.strip()
     
     # Quad-state composite interaction
     has_inundation = (df["inundation_area_sqm"] > 0).astype(int)
@@ -285,45 +278,25 @@ CAT_FEATURES = [
     "district", "landcover", "soil_type", "water_supply",
     "electricity", "road_quality", "urban_rural",
     "water_presence_flag", "flood_occurrence_current_event",
-    "is_good_to_live", "reason_not_good_to_live", "downstream_risk_count",
-    "downstream_district_sig", "inundation_sig"
+    "is_good_to_live", "reason_not_good_to_live", "downstream_risk_count"
 ]
 
 TARGET_ENC_COLS = [
     "district", "grid_id", "downstream_sig", "downstream_quad_sig", "infra_deficit_sig",
     "landcover", "soil_type", "water_supply", "electricity", "road_quality",
-    "downstream_risk_count", "grid_id_100", "grid_id_050", "grid_id_025", "grid_id_012",
-    "inundation_sig"
+    "downstream_risk_count", "grid_id_100", "grid_id_050", "grid_id_025", "grid_id_012"
 ]
 
-COMPOSITE_ENC_COLS = ["downstream_district_sig"] # High smoothing
+COMPOSITE_ENC_COLS = []
 STD_ENC_COLS = [
-    "district", "downstream_sig", "downstream_district_sig"
+    "district", "downstream_sig"
 ]
 
 IGNORE_COLS = DROP_COLS + [
-    TARGET, "flood_occurrence_yes", "downstream_sig", "downstream_quad_sig", "infra_deficit_sig",
-    "downstream_district_sig", "inundation_sig"
+    TARGET, "flood_occurrence_yes", "downstream_sig", "downstream_quad_sig", "infra_deficit_sig"
 ]
 SPATIAL_HELPERS = ["lat_bin", "lon_bin", "grid_id", "grid_id_100", "grid_id_050", "grid_id_025", "grid_id_012"]
 BASE_FEATURES = [c for c in train_df.columns if c not in IGNORE_COLS and c not in SPATIAL_HELPERS]
-
-# [v55] Pre-processing Conflict Resolution (Target Smoothing on duplicate physical features)
-print("\n[PREP] Resolving target conflicts for duplicate physical/geographical features...")
-downstream_cols = [
-    "flood_occurrence_current_event", "is_good_to_live", "reason_not_good_to_live",
-    "downstream_risk_count", "downstream_sig", "downstream_district_sig",
-    "downstream_quad_sig", "confirmed_severe_risk", "no_flood_confirmed",
-    "inundation_per_capita", "inundation_qbin", "inundation_sig", "confirmed_risk",
-    "inundation_flood_interaction", "inundation_density_risk", "inundation_ratio",
-    "flood_occurrence_yes"
-]
-conflict_key_cols = [c for c in BASE_FEATURES if c not in downstream_cols]
-# Fill NaNs temporarily for grouping consistency
-temp_df = train_df[conflict_key_cols].fillna(-999)
-group_medians = train_df.groupby(list(temp_df.columns))[TARGET].transform('median')
-train_df[TARGET] = group_medians
-print(f"   Conflict resolution complete. Adjusted target risk scores across {len(train_df)} rows.")
 
 print("\n[PREP] Casting dtypes...")
 cat_dtype_map = {}
@@ -342,74 +315,18 @@ for col in BASE_FEATURES:
         test_df[col]  = test_df[col].fillna(median_val)
 
 cat_feature_names = [c for c in CAT_FEATURES if c in BASE_FEATURES]
-numeric_feature_names = [c for c in BASE_FEATURES if c not in cat_feature_names]
 print(f"   Base features: {len(BASE_FEATURES)}")
-
-# -----------------------------------------------------------------
-# 4.3. ADVERSARIAL VALIDATION SAMPLE WEIGHTING (COVARIATE SHIFT CORRECTION)
-# -----------------------------------------------------------------
-train_df['sample_weight'] = 1.0
-
-if USE_ADVERSARIAL_WEIGHTS:
-    print("\n[ADVERSARIAL] Computing adversarial validation sample weights...")
-    from sklearn.ensemble import RandomForestClassifier
-    
-    # Isolate real train rows vs test rows
-    real_mask = train_df['is_pseudo'] == 0
-    adv_train = train_df[real_mask][numeric_feature_names].copy()
-    adv_test  = test_df[numeric_feature_names].copy()
-    
-    adv_train['is_test'] = 0
-    adv_test['is_test']  = 1
-    
-    adv_combined = pd.concat([adv_train, adv_test], ignore_index=True)
-    X_adv = adv_combined[numeric_feature_names].fillna(0).values
-    y_adv = adv_combined['is_test'].values
-    
-    # Train classifier to distinguish train vs test
-    adv_clf = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=SEED, n_jobs=-1)
-    
-    # We use a KFold prediction scheme to get out-of-fold probability estimates for train rows
-    from sklearn.model_selection import KFold
-    kf_adv = KFold(n_splits=5, shuffle=True, random_state=SEED)
-    train_probs = np.zeros(len(adv_train))
-    
-    for tr_idx_a, va_idx_a in kf_adv.split(adv_train):
-        X_tr_a = adv_train.iloc[tr_idx_a][numeric_feature_names].fillna(0).values
-        y_tr_a = [0] * len(tr_idx_a)
-        
-        # Mix in test rows during training to learn the boundary
-        X_tr_mixed = np.vstack([X_tr_a, adv_test[numeric_feature_names].fillna(0).values])
-        y_tr_mixed = np.append(y_tr_a, [1] * len(adv_test))
-        
-        clf_fold = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=SEED, n_jobs=-1)
-        clf_fold.fit(X_tr_mixed, y_tr_mixed)
-        
-        X_va_a = adv_train.iloc[va_idx_a][numeric_feature_names].fillna(0).values
-        train_probs[va_idx_a] = clf_fold.predict_proba(X_va_a)[:, 1]
-    
-    # Calculate density ratio weights: P(Test) / P(Train)
-    # Clip to prevent extreme noise weights
-    raw_weights = train_probs / (1.0 - train_probs + 1e-6)
-    normalized_weights = raw_weights / np.mean(raw_weights)
-    clipped_weights = np.clip(normalized_weights, 0.5, 3.0)
-    
-    train_df.loc[real_mask, 'sample_weight'] = clipped_weights
-    print(f"   Adversarial weights computed. Range: [{clipped_weights.min():.4f}, {clipped_weights.max():.4f}]")
 
 # -----------------------------------------------------------------
 # 5. MODEL DEFINITIONS & BASE ESTIMATORS
 # -----------------------------------------------------------------
-# [v55] Renamed models to reflect custom EV-MAE objective
 MODEL_NAMES = [
-    "XGB-EV-MAE-1 (d7)",
+    "XGB-MAE-1 (d7)",
     "CAT-MAE-1 (d5)",
     "CAT-MAE-2 (d5)",
     "CAT-RMSE (d5)",
     "LGB-MAE (d5)",
-    "XGB-EV-MAE-2 (d5)",
-    "CAT-Quantile-Median",
-    "CAT-RankGauss (d5)"
+    "XGB-MAE-2 (d5)"
 ]
 
 N_FOLDS     = 5
@@ -438,72 +355,16 @@ all_oof_stacked = np.zeros(len(original_y))
 all_tst_stacked = []
 
 print("\n" + "=" * 75)
-print(f"  5-FOLD SPATIAL GROUP CV - SINGLE-SEED v55 PIPELINE")
+print(f"  5-FOLD SPATIAL GROUP CV - SINGLE-SEED v57 PIPELINE")
 print("=" * 75)
 
 t_start_global = time.time()
 
 # -----------------------------------------------------------------
-# 5.2. LEAVE-ONE-OUT TARGET ENCODING HELPER (Leak-Free)
-# -----------------------------------------------------------------
-def loo_target_encode(tr_df, va_df, te_df, col, target, global_median, smoothing=10):
-    # Only compute statistics on REAL training rows
-    real_tr = tr_df[tr_df['is_pseudo'] == 0]
-    stats = real_tr.groupby(col)[target].agg(['sum', 'count'])
-    
-    # Map stats to train rows and cast to float
-    tr_sum = tr_df[col].map(stats['sum']).fillna(0).astype(float)
-    tr_count = tr_df[col].map(stats['count']).fillna(0).astype(float)
-    
-    # For training rows: if it is a real row, exclude self
-    # If it is a pseudo row, do not exclude (since it wasn't in stats)
-    is_real = (tr_df['is_pseudo'] == 0).astype(float)
-    
-    # LOO calculation
-    tr_loo = (tr_sum - is_real * tr_df[target]) / (tr_count - is_real).clip(lower=1)
-    
-    # Smooth toward global median
-    tr_smooth = (tr_count * tr_loo + smoothing * global_median) / (tr_count + smoothing)
-    
-    # Val/test: use full stats from real training rows
-    full_enc = (stats['sum'] + smoothing * global_median) / (stats['count'] + smoothing)
-    
-    tr_df[f'{col}_loo_enc'] = tr_smooth.fillna(global_median).astype(float)
-    va_df[f'{col}_loo_enc'] = va_df[col].map(full_enc).fillna(global_median).astype(float)
-    te_df[f'{col}_loo_enc'] = te_df[col].map(full_enc).fillna(global_median).astype(float)
-
-# -----------------------------------------------------------------
-# 5.5. CUSTOM EV-MAE OBJECTIVE FUNCTION (XGBoost)
-# -----------------------------------------------------------------
-def ev_mae_objective(y_true, y_pred):
-    e = y_pred - y_true
-    n = len(e)
-    mean_e = np.mean(e)
-    
-    # 1. Smooth MAE (Pseudo-Huber)
-    delta = 0.05
-    grad_huber = e / np.sqrt(1.0 + (e / delta)**2)
-    hess_huber = 1.0 / (1.0 + (e / delta)**2)**1.5
-    
-    # 2. MSE (gradient stabilizer)
-    grad_mse = e
-    hess_mse = np.ones_like(e)
-    
-    # 3. Residual Variance (Explained Variance driver)
-    grad_var = (2.0 / n) * (e - mean_e)
-    hess_var = np.full_like(e, 2.0 / n)
-    
-    w_huber, w_mse, w_var = 1.0, 0.05, 0.2
-    
-    grad = w_huber * grad_huber + w_mse * grad_mse + w_var * grad_var
-    hess = w_huber * hess_huber + w_mse * hess_mse + w_var * hess_var
-    return grad, hess
-
-# -----------------------------------------------------------------
 # 6. L2 REGULARIZED CUSTOM METRIC-DRIVEN LEVEL-2 STACKER
 # -----------------------------------------------------------------
-# Recalibrated simulator weights (17 points fit):
-c_mae, c_rmse, c_ev = 0.535196, 1.146326, 0.054898
+# EV-prioritizing simulator weights from v42:
+c_mae, c_rmse, c_ev = 0.392696, 0.875527, 0.406963
 
 def fit_metric_stacker(X_meta, y_true, alpha=0.1):
     n_meta_features = X_meta.shape[1]
@@ -525,18 +386,11 @@ def fit_metric_stacker(X_meta, y_true, alpha=0.1):
         return score + reg
     
     init_guess = np.zeros(n_meta_features)
-    # Give base predictions positive starting weight, others zero
     init_guess[:len(MODEL_NAMES)] = 1.0 / len(MODEL_NAMES)
     init_guess = np.append(init_guess, 0.0) # Intercept
     
-    # base prediction weights (first 8 features) are bounded to be non-negative.
-    # dispersion stats and intercept are unconstrained.
-    n_base_models = len(MODEL_NAMES)
-    n_unconstrained = n_meta_features - n_base_models
-    
     bounds = (
-        [(0.0, None) for _ in range(n_base_models)] + 
-        [(None, None) for _ in range(n_unconstrained)] + 
+        [(0.0, None) for _ in range(len(MODEL_NAMES))] + 
         [(None, None)]
     )
     
@@ -546,16 +400,8 @@ def fit_metric_stacker(X_meta, y_true, alpha=0.1):
 # -----------------------------------------------------------------
 # 7. TRAINING LOOP
 # -----------------------------------------------------------------
-oof_analytical = np.zeros(len(train_df))
-tst_analytical_fold = np.zeros(len(test_df))
-
 oof_preds = {m: np.zeros(len(train_df)) for m in MODEL_NAMES}
 tst_preds = {m: np.zeros(len(test_df))  for m in MODEL_NAMES}
-
-oof_iqr = np.zeros(len(train_df))
-oof_skew = np.zeros(len(train_df))
-tst_iqr = np.zeros(len(test_df))
-tst_skew = np.zeros(len(test_df))
 
 for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
     t0 = time.time()
@@ -604,34 +450,11 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         if col in STD_ENC_COLS:
             te_features.append(f"{col}_target_std")
             
-    # [v55] Compute Hierarchical Spatial Encoding Residuals
-    for tgt_df in [tr_rows, va_rows, test_df]:
-        tgt_df["grid_delta_050"] = tgt_df["grid_id_050_target_enc"] - tgt_df["grid_id_100_target_enc"]
-        tgt_df["grid_delta_025"] = tgt_df["grid_id_025_target_enc"] - tgt_df["grid_id_050_target_enc"]
-        tgt_df["grid_delta_012"] = tgt_df["grid_id_012_target_enc"] - tgt_df["grid_id_025_target_enc"]
-
-    # Drop raw fine-grained spatial encodings (enc + q25 + q75 + cnt) from te_features list
-    grid_cols_to_drop = [
-        "grid_id_050_target_enc", "grid_id_050_target_q25", "grid_id_050_target_q75", "grid_id_050_target_cnt",
-        "grid_id_025_target_enc", "grid_id_025_target_q25", "grid_id_025_target_q75", "grid_id_025_target_cnt",
-        "grid_id_012_target_enc", "grid_id_012_target_q25", "grid_id_012_target_q75", "grid_id_012_target_cnt"
-    ]
-    te_features = [f for f in te_features if f not in grid_cols_to_drop]
-    # Inject the spatial deltas into the feature matrix instead
-    te_features.extend(["grid_delta_050", "grid_delta_025", "grid_delta_012"])
-            
-    # 2. Leave-One-Out (LOO) target encodings
-    loo_target_encode(tr_rows, va_rows, test_df, 'downstream_sig', TARGET, GLOBAL_MEDIAN)
-    loo_target_encode(tr_rows, va_rows, test_df, 'district',       TARGET, GLOBAL_MEDIAN)
-    loo_target_encode(tr_rows, va_rows, test_df, 'downstream_district_sig', TARGET, GLOBAL_MEDIAN, smoothing=SMOOTHING_COMPOSITE)
-    loo_features = ['downstream_sig_loo_enc', 'district_loo_enc', 'downstream_district_sig_loo_enc']
-
-    # Combine all features (deduplicated defensively)
-    FEATURES = list(dict.fromkeys(BASE_FEATURES + te_features + loo_features))
+    # Combine all features (Reverted to stable v45 feature core)
+    FEATURES = BASE_FEATURES + te_features
 
     y_tr, y_va = tr_rows[TARGET], va_rows[TARGET]
     X_tr, X_va, X_te = tr_rows[FEATURES].copy(), va_rows[FEATURES].copy(), test_df[FEATURES].copy()
-    w_tr = tr_rows['sample_weight'].values
 
     # Dtype converters
     cat_cols = [c for c in CAT_FEATURES if c in FEATURES]
@@ -661,16 +484,16 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
 
     # --- Base Level-1 Model Training ---
 
-    # 1. XGB-EV-MAE-1 (d7) - Custom objective function [v55]
+    # 1. XGB-MAE-1 (d7) - Unconstrained, MAE loss
     xgb_m1 = xgb.XGBRegressor(
         n_estimators=4000, learning_rate=0.03, max_depth=7, min_child_weight=4,
         subsample=0.85, colsample_bytree=0.6, colsample_bylevel=0.6,
         reg_alpha=2.0, reg_lambda=4.0, gamma=0.1, max_delta_step=1,
-        objective=ev_mae_objective, eval_metric="mae", tree_method="hist",
+        objective="reg:absoluteerror", eval_metric="mae", tree_method="hist",
         device=XGB_DEVICE,
         enable_categorical=False, early_stopping_rounds=100, random_state=SEED, n_jobs=-1
     )
-    xgb_m1.fit(X_tr_xgb, y_tr, sample_weight=w_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
+    xgb_m1.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
     
     # 2. CAT-MAE-1 (d5)
     cat_m1 = cb.CatBoostRegressor(
@@ -679,7 +502,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         loss_function="MAE", eval_metric="MAE", task_type=CB_TASK_TYPE,
         random_seed=SEED, max_ctr_complexity=2, verbose=False
     )
-    cat_m1.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
+    cat_m1.fit(X_tr_cat, y_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
     # 3. CAT-MAE-2 (d5)
     cat_m2 = cb.CatBoostRegressor(
@@ -688,7 +511,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         loss_function="MAE", eval_metric="MAE", task_type=CB_TASK_TYPE,
         random_seed=SEED + 1, max_ctr_complexity=2, verbose=False
     )
-    cat_m2.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
+    cat_m2.fit(X_tr_cat, y_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
     # 4. CAT-RMSE (d5)
     cat_rmse = cb.CatBoostRegressor(
@@ -697,7 +520,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         loss_function="RMSE", eval_metric="RMSE", task_type=CB_TASK_TYPE,
         random_seed=SEED + 2, max_ctr_complexity=2, verbose=False
     )
-    cat_rmse.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
+    cat_rmse.fit(X_tr_cat, y_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
     # 5. LGB-MAE (d5)
     lgb_m1 = lgb.LGBMRegressor(
@@ -706,118 +529,40 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         reg_alpha=2.0, reg_lambda=5.0, objective="regression_l1",
         random_state=SEED, n_jobs=-1, verbosity=-1
     )
-    lgb_m1.fit(X_tr, y_tr, sample_weight=w_tr, eval_set=[(X_va, y_va)], callbacks=[lgb.early_stopping(150, verbose=False)])
+    lgb_m1.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], categorical_feature=cat_cols, callbacks=[lgb.early_stopping(150, verbose=False)])
 
-    # 6. XGB-EV-MAE-2 (d5) - Custom objective function [v55]
+    # 6. XGB-MAE-2 (d5) - Unconstrained, MAE loss
     xgb_m2 = xgb.XGBRegressor(
         n_estimators=4000, learning_rate=0.03, max_depth=5, min_child_weight=6,
         subsample=0.75, colsample_bytree=0.5, colsample_bylevel=0.8,
         reg_alpha=5.0, reg_lambda=10.0, gamma=0.2, max_delta_step=1,
-        objective=ev_mae_objective, eval_metric="mae", tree_method="hist",
+        objective="reg:absoluteerror", eval_metric="mae", tree_method="hist",
         device=XGB_DEVICE,
         enable_categorical=False, early_stopping_rounds=100, random_state=SEED + 3, n_jobs=-1
     )
-    xgb_m2.fit(X_tr_xgb, y_tr, sample_weight=w_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
-
-    # 7. Quantile Ensemble Base Model
-    quantile_preds_va = []
-    quantile_preds_te = []
-    for alpha in QUANTILE_ALPHAS:
-        qmodel = cb.CatBoostRegressor(
-            iterations=3000, learning_rate=0.03, depth=5, l2_leaf_reg=5.0,
-            loss_function=f'Quantile:alpha={alpha}', eval_metric=f'Quantile:alpha={alpha}',
-            task_type=CB_TASK_TYPE, thread_count=-1, random_seed=SEED, max_ctr_complexity=2, verbose=False
-        )
-        qmodel.fit(X_tr_cat, y_tr, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=100, verbose=False)
-        quantile_preds_va.append(qmodel.predict(X_va_cat))
-        quantile_preds_te.append(qmodel.predict(X_te_cat))
-        
-    va_quantile_median = np.median(quantile_preds_va, axis=0)
-    te_quantile_median = np.median(quantile_preds_te, axis=0)
-
-    # 8. CAT-RankGauss (d5)
-    # Fit target transformer strictly inside the fold on real training data labels only
-    real_tr_y_arr = y_tr[tr_rows['is_pseudo'] == 0].values.reshape(-1, 1)
-    qt = QuantileTransformer(output_distribution='normal', random_state=SEED)
-    qt.fit(real_tr_y_arr)
-    
-    y_tr_trans = qt.transform(y_tr.values.reshape(-1, 1)).flatten()
-    y_va_trans = qt.transform(y_va.values.reshape(-1, 1)).flatten()
-    
-    cat_rg = cb.CatBoostRegressor(
-        iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=5.0,
-        bagging_temperature=0.7, random_strength=2.0, border_count=254,
-        loss_function="RMSE", eval_metric="RMSE", task_type=CB_TASK_TYPE,
-        random_seed=SEED + 4, max_ctr_complexity=2, verbose=False
-    )
-    cat_rg.fit(X_tr_cat, y_tr_trans, sample_weight=w_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va_trans), early_stopping_rounds=150, verbose=False)
-    
-    rg_val_pred_trans = cat_rg.predict(X_va_cat)
-    rg_te_pred_trans = cat_rg.predict(X_te_cat)
-    
-    # Inverse-transform predictions back to original risk range
-    rg_val_pred = qt.inverse_transform(rg_val_pred_trans.reshape(-1, 1)).flatten()
-    rg_te_pred = qt.inverse_transform(rg_te_pred_trans.reshape(-1, 1)).flatten()
+    xgb_m2.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
 
     # --- Save Out-Of-Fold Predictions ---
-    oof_preds["XGB-EV-MAE-1 (d7)"][va_idx_clean] = xgb_m1.predict(X_va_xgb)
+    oof_preds["XGB-MAE-1 (d7)"][va_idx_clean] = xgb_m1.predict(X_va_xgb)
     oof_preds["CAT-MAE-1 (d5)"][va_idx_clean] = cat_m1.predict(X_va_cat)
     oof_preds["CAT-MAE-2 (d5)"][va_idx_clean] = cat_m2.predict(X_va_cat)
     oof_preds["CAT-RMSE (d5)"][va_idx_clean] = cat_rmse.predict(X_va_cat)
     oof_preds["LGB-MAE (d5)"][va_idx_clean] = lgb_m1.predict(X_va)
-    oof_preds["XGB-EV-MAE-2 (d5)"][va_idx_clean] = xgb_m2.predict(X_va_xgb)
-    oof_preds["CAT-Quantile-Median"][va_idx_clean] = va_quantile_median
-    oof_preds["CAT-RankGauss (d5)"][va_idx_clean] = rg_val_pred
+    oof_preds["XGB-MAE-2 (d5)"][va_idx_clean] = xgb_m2.predict(X_va_xgb)
 
     # --- Accumulate Test Predictions ---
-    tst_preds["XGB-EV-MAE-1 (d7)"] += xgb_m1.predict(X_te_xgb) / N_FOLDS
+    tst_preds["XGB-MAE-1 (d7)"] += xgb_m1.predict(X_te_xgb) / N_FOLDS
     tst_preds["CAT-MAE-1 (d5)"] += cat_m1.predict(X_te_cat) / N_FOLDS
     tst_preds["CAT-MAE-2 (d5)"] += cat_m2.predict(X_te_cat) / N_FOLDS
     tst_preds["CAT-RMSE (d5)"] += cat_rmse.predict(X_te_cat) / N_FOLDS
     tst_preds["LGB-MAE (d5)"]  += lgb_m1.predict(X_te) / N_FOLDS
-    tst_preds["XGB-EV-MAE-2 (d5)"] += xgb_m2.predict(X_te_xgb) / N_FOLDS
-    tst_preds["CAT-Quantile-Median"] += te_quantile_median / N_FOLDS
-    tst_preds["CAT-RankGauss (d5)"] += rg_te_pred / N_FOLDS
-
-    # --- Quantile Dispersion Calculations (Dispersion Meta-Features) ---
-    q_arr_va = np.array(quantile_preds_va)  # shape: (5, N_val)
-    q_arr_te = np.array(quantile_preds_te)  # shape: (5, N_test)
-    
-    va_iqr = q_arr_va.max(axis=0) - q_arr_va.min(axis=0)
-    te_iqr = q_arr_te.max(axis=0) - q_arr_te.min(axis=0)
-    
-    va_skew = q_arr_va.mean(axis=0) - va_quantile_median
-    te_skew = q_arr_te.mean(axis=0) - te_quantile_median
-    
-    oof_iqr[va_idx_clean] = va_iqr
-    oof_skew[va_idx_clean] = va_skew
-    tst_iqr += te_iqr / N_FOLDS
-    tst_skew += te_skew / N_FOLDS
-
-    # --- Compute CV-Safe Analytical Group Medians ---
-    real_tr_clean = tr_rows[tr_rows['is_pseudo'] == 0]
-    sig_stats = real_tr_clean.groupby('downstream_sig')[TARGET].agg(['median', 'count'])
-    smoothed_medians = ((sig_stats['count'] * sig_stats['median'] + 10 * GLOBAL_MEDIAN) / (sig_stats['count'] + 10))
-    
-    oof_analytical[va_idx_clean] = va_rows['downstream_sig'].map(smoothed_medians).fillna(GLOBAL_MEDIAN).values
-    tst_analytical_fold += test_df['downstream_sig'].map(smoothed_medians).fillna(GLOBAL_MEDIAN).values / N_FOLDS
+    tst_preds["XGB-MAE-2 (d5)"] += xgb_m2.predict(X_te_xgb) / N_FOLDS
 
     print(f"      Fold {fold+1}/5 | XGB1_it={xgb_m1.best_iteration}  CAT1_it={cat_m1.best_iteration_}  CAT2_it={cat_m2.best_iteration_}  LGB_it={lgb_m1.best_iteration_}  [{time.time()-t0:.0f}s]")
 
 # Construct Stacking Meta-Feature Matrices
-oof_meta = np.column_stack([
-    *[oof_preds[m][real_mask] for m in MODEL_NAMES],
-    oof_iqr[real_mask],
-    oof_skew[real_mask],
-    oof_analytical[real_mask]
-])
-
-tst_meta = np.column_stack([
-    *[tst_preds[m] for m in MODEL_NAMES],
-    tst_iqr,
-    tst_skew,
-    tst_analytical_fold
-])
+oof_meta = np.column_stack([oof_preds[m][real_mask] for m in MODEL_NAMES])
+tst_meta = np.column_stack([tst_preds[m] for m in MODEL_NAMES])
 
 # Inner-Loop CV Grid Search for best custom L2 alpha
 print("   [STACK] Running nested CV grid search for L2 alpha...")
@@ -854,9 +599,6 @@ tst_stacked = np.clip(np.dot(tst_meta, w_final) + b_final, 0.0, 1.0)
 print(f"   [FINAL COEFFICIENTS]")
 for i, name in enumerate(MODEL_NAMES):
     print(f"      {name:<18}: {w_final[i]:.4f}")
-print(f"      {'Quantile IQR':<18}: {w_final[-3]:.4f}")
-print(f"      {'Quantile Skew':<18}: {w_final[-2]:.4f}")
-print(f"      {'Analytical Median':<18}: {w_final[-1]:.4f}")
 print(f"      {'Intercept':<18}: {b_final:.4f}")
 
 # -----------------------------------------------------------------
@@ -868,7 +610,7 @@ g_ev   = explained_variance_score(original_y, oof_stacked)
 g_lb   = (c_mae * g_mae + c_rmse * g_rmse) * (1.0 + c_ev * (1.0 - g_ev))
 
 print("\n" + "=" * 75)
-print("  GLOBAL OOF RESULTS (v55 - Raw Stacking)")
+print("  GLOBAL OOF RESULTS (v57 - Raw Stacking)")
 print("=" * 75)
 print(f"      MAE            : {g_mae:.5f}")
 print(f"      RMSE           : {g_rmse:.5f}")
@@ -885,30 +627,30 @@ for fold, (tr_idx, va_idx) in enumerate(gkf_l2.split(original_df, original_y, or
     fold_results_all.append({"fold": fold+1, "MAE": f_mae, "RMSE": f_rmse, "EV": f_ev})
 
 fold_report = pd.DataFrame(fold_results_all)
-fold_report.to_csv("fold_report_v55.csv", index=False)
-fold_report.to_csv("submissions/fold_report_v55.csv", index=False)
+fold_report.to_csv("fold_report_v57.csv", index=False)
+fold_report.to_csv("submissions/fold_report_v57.csv", index=False)
 print(f"\n[DONE] Saved fold reports.")
 
 submission = pd.DataFrame({
     "record_id"       : test_df[ID_COL],
     "flood_risk_score": tst_stacked
 })
-submission.to_csv("submission_v55.csv", index=False)
-submission.to_csv("submissions/submission_v55.csv", index=False)
-print(f"[DONE] Saved submission_v55.csv ({len(submission)} rows)")
+submission.to_csv("submission_v57.csv", index=False)
+submission.to_csv("submissions/submission_v57.csv", index=False)
+print(f"[DONE] Saved submission_v57.csv ({len(submission)} rows)")
 
-np.save("oof_v55.npy", oof_stacked)
-np.save("submissions/oof_v55.npy", oof_stacked)
-print(f"[DONE] Saved oof_v55.npy")
+np.save("oof_v57.npy", oof_stacked)
+np.save("submissions/oof_v57.npy", oof_stacked)
+print(f"[DONE] Saved oof_v57.npy")
 
 # -----------------------------------------------------------------
-# 8. INTEGRATED FALLBACK-ENABLED PER-GROUP POWER TRANSFORMATION
+# 8. INTEGRATED POST-HOC GLOBAL POWER TRANSFORMATION
 # -----------------------------------------------------------------
 print("\n" + "=" * 75)
-print("  POST-HOC POWER TRANSFORMATION OPTIMIZATION (v55)")
+print("  POST-HOC GLOBAL POWER TRANSFORMATION OPTIMIZATION (v57)")
 print("=" * 75)
 
-# Fit global calibration parameters first
+# Fit global calibration parameters
 def global_transform_loss(params):
     a, b, c = params
     pred = a * np.power(np.clip(oof_stacked, 1e-6, None), b) + c
@@ -927,100 +669,33 @@ res_glob = minimize(global_transform_loss, initial_guess, bounds=bounds, method=
 a_glob, b_glob, c_glob = res_glob.x
 print(f"Global parameters: a={a_glob:.5f}, b={b_glob:.5f}, c={c_glob:.5f}")
 
-# Initialize calibrated predictions with global parameters
-opt_oof = a_glob * np.power(np.clip(oof_stacked, 1e-6, None), b_glob) + c_glob
-opt_oof = np.clip(opt_oof, 0.0, 1.0)
+# Compute globally calibrated predictions
+final_oof = a_glob * np.power(np.clip(oof_stacked, 1e-6, None), b_glob) + c_glob
+final_oof = np.clip(final_oof, 0.0, 1.0)
 
-opt_test_preds = a_glob * np.power(np.clip(tst_stacked, 1e-6, None), b_glob) + c_glob
-opt_test_preds = np.clip(opt_test_preds, 0.0, 1.0)
-
-# Set group labels for train and test
-train_groups = train_df.loc[real_mask, 'downstream_sig'].values
-test_groups = test_df['downstream_sig'].values
-
-# Apply group-specific calibration override
-unique_groups = np.unique(train_groups)
-n_calibrated_groups = 0
-for grp in unique_groups:
-    tr_mask = train_groups == grp
-    te_mask = test_groups == grp
-    
-    if tr_mask.sum() < 10: # Skip sparse groups (use global fallback)
-        continue
-        
-    y_grp = original_y[tr_mask]
-    p_grp = oof_stacked[tr_mask]
-    
-    def group_loss(params):
-        a, b, c = params
-        pred_cal = np.clip(a * np.power(np.clip(p_grp, 1e-6, None), b) + c, 0, 1)
-        return mean_absolute_error(y_grp, pred_cal)
-        
-    res_grp = minimize(group_loss, x0=[a_glob, b_glob, c_glob],
-                       bounds=[(0.5, 1.5), (0.5, 2.0), (-0.20, 0.20)],
-                       method='L-BFGS-B')
-    
-    if res_grp.success:
-        a_grp, b_grp, c_grp = res_grp.x
-        opt_oof[tr_mask] = np.clip(a_grp * np.power(np.clip(p_grp, 1e-6, None), b_grp) + c_grp, 0, 1)
-        if te_mask.any():
-            opt_test_preds[te_mask] = np.clip(a_grp * np.power(np.clip(tst_stacked[te_mask], 1e-6, None), b_grp) + c_grp, 0, 1)
-        n_calibrated_groups += 1
-
-print(f"Group calibration complete. Overrode {n_calibrated_groups} groups out of {len(unique_groups)} total groups.")
-
-# -----------------------------------------------------------------
-# 9. DYNAMIC ANALYTICAL GROUP MEDIAN BLEND OPTIMIZATION
-# -----------------------------------------------------------------
-if USE_BLEND:
-    print("\n" + "=" * 75)
-    print("  DYNAMIC ANALYTICAL GROUP MEDIAN BLEND (v55)")
-    print("=" * 75)
-    
-    oof_analytical_clean = oof_analytical[real_mask]
-    
-    def blend_loss(alpha_val):
-        blend_pred = (1.0 - alpha_val[0]) * opt_oof + alpha_val[0] * oof_analytical_clean
-        mae = mean_absolute_error(original_y, blend_pred)
-        rmse = root_mean_squared_error(original_y, blend_pred)
-        ev = explained_variance_score(original_y, blend_pred)
-        return (c_mae * mae + c_rmse * rmse) * (1.0 + c_ev * (1.0 - ev))
-    
-    res_blend = minimize(blend_loss, x0=[0.20], bounds=[(0.0, 1.0)], method='L-BFGS-B')
-    best_alpha = res_blend.x[0]
-    print(f"Optimal BLEND_ALPHA: {best_alpha:.4f}")
-    
-    # Compute final blended predictions for both OOF and Test
-    final_oof = (1.0 - best_alpha) * opt_oof + best_alpha * oof_analytical_clean
-    final_oof = np.clip(final_oof, 0.0, 1.0)
-    
-    final_test_preds = (1.0 - best_alpha) * opt_test_preds + best_alpha * tst_analytical_fold
-    final_test_preds = np.clip(final_test_preds, 0.0, 1.0)
-else:
-    print("\n[BLEND] Dynamic analytical blending is disabled. Using calibrated predictions directly.")
-    final_oof = opt_oof
-    final_test_preds = opt_test_preds
+final_test_preds = a_glob * np.power(np.clip(tst_stacked, 1e-6, None), b_glob) + c_glob
+final_test_preds = np.clip(final_test_preds, 0.0, 1.0)
 
 opt_mae = mean_absolute_error(original_y, final_oof)
 opt_rmse = root_mean_squared_error(original_y, final_oof)
 opt_ev = explained_variance_score(original_y, final_oof)
 opt_lb = (c_mae * opt_mae + c_rmse * opt_rmse) * (1.0 + c_ev * (1.0 - opt_ev))
 
-print(f"\nOptimized & Blended OOF LB Score: {opt_lb:.5f}")
+print(f"\nOptimized OOF LB Score: {opt_lb:.5f}")
 print(f"  MAE: {opt_mae:.5f}, RMSE: {opt_rmse:.5f}, EV: {opt_ev:.5f}")
 
-np.save("oof_v55_optimized.npy", final_oof)
-np.save("submissions/oof_v55_optimized.npy", final_oof)
-print(f"[DONE] Saved oof_v55_optimized.npy")
+np.save("oof_v57_optimized.npy", final_oof)
+np.save("submissions/oof_v57_optimized.npy", final_oof)
+print(f"[DONE] Saved oof_v57_optimized.npy")
 
-# Save final calibrated & blended test predictions
+# Save final calibrated test predictions
 submission_opt = pd.DataFrame({
     "record_id"       : test_df[ID_COL],
     "flood_risk_score": final_test_preds
 })
-submission_opt.to_csv("submission_v55_optimized.csv", index=False)
-submission_opt.to_csv("submissions/submission_v55_optimized.csv", index=False)
-print(f"[DONE] Saved submission_v55_optimized.csv ({len(submission_opt)} rows)")
+submission_opt.to_csv("submission_v57_optimized.csv", index=False)
+submission_opt.to_csv("submissions/submission_v57_optimized.csv", index=False)
+print(f"[DONE] Saved submission_v57_optimized.csv ({len(submission_opt)} rows)")
 print(f"  Optimized range  : [{final_test_preds.min():.4f}, {final_test_preds.max():.4f}]")
 print(f"  Total Time       : {time.time() - t_start_global:.1f}s")
 print("=" * 75)
