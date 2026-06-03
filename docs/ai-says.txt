@@ -1,0 +1,13 @@
+I dug into the meta-playbooks of competitive tabular masterclasses and Kaggle Grandmaster forums to see what else we could extract to push past our current boundaries. Looking across high-noise synthetic tabular architectures, two advanced adjustments stand out that directly validate and could extend our v85 Grand Unification Engine strategy:  1. The Value Counts "Magic Feature"Grandmasters frequently map the exact value frequencies of continuous variables back into the dataset as standalone columns. When a synthetic data generator models a smooth distribution, it splits values into arbitrary bins, meaning certain float variations or truncated fractions occur dozens of times while others are perfectly unique.  The Code Lever:Pythonfor col in ['latitude', 'longitude', 'inundation_ratio']:
+    freq_map = df[col].value_counts().to_dict()
+    df[f'{col}_freq_counts'] = df[col].map(freq_map)
+  Adding these frequency counts allows the tree models to split data horizontally along density lines rather than just vertically along conditional boundaries, completely uncovering hidden sampling thresholds in the synthetic grid.
+
+### 2. Two-Step Transductive Fine-Tuning
+The absolute peak strategy for transductive soft pseudo-labeling often involves a secondary alignment step. While training on the joint matrix (train rows + soft pseudo-labeled test rows) maps out global coordinate structures beautifully, it can introduce minor bias from the pseudo-label model itself. 
+* **The Playbook Adjustment:** Train your level-1 base models on the combined data first, extract those out-of-fold predictions, but fit the Level-2 Ridge meta-learner *strictly* on the organic, original training row outputs. This allows the base trees to adapt to the test coordinate space while keeping the ensembling weights pristine and zero-leakage.
+
+---
+
+Since we are setting up `v85`, do you want to inject the raw frequency count vectors into our continuous indicators before running the 3-seed pipeline, or should we run the baseline global Yeo-Johnson script exactly as it stands to verify our current peak simulator metrics first?
+  
