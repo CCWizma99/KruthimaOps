@@ -1,22 +1,31 @@
 """
-ML Opsidian: Genesis vc2 - Crazy 02 (2-Seed Experimental Stacking Pipeline)
+ML Opsidian: Genesis v77 - Corrected Pseudo-Labels, Equal Weighting & Calibrated Metric
 ==================================================================================
-Features of vc2:
-1. Multi-Seed Ensembling: SEEDS = [42, 2024] (2-seed experimental pipeline)
-2. Target-Inversion Score (TIS): Hand-crafted physical index using inverted correlations.
-3. Geospatial Risk Gradients (GRG): Micro-spatial derivatives based on multi-scale target encodings.
-4. Smarter Conflict Key: Categoricals + 5-quantile buckets of coordinates, elevation, distance to river, and rainfall.
-5. Separate Pseudo-Row Conflict Resolution: Prevents soft labels from contaminating real row targets.
-6. Target Power Normalization (Yeo-Johnson) Inside Folds: Fit on resolved targets of tr_rows, transform validation target for early stopping, inverse transform back to raw space before stacking.
-7. Pure Downstream Oracle: 7th base model (CatBoost) trained strictly on 4 downstream categorical/continuous features in raw space.
+Features of v77:
+1. 3-Seed Ensembling: SEEDS = [42, 2024, 7]
+2. Leak-Free Target Conflict Resolution inside the fold loop.
+3. Correct Competition Metric Coefficients inside L2 Stacker & Post-Hoc:
+   - c_mae = 0.539328, c_rmse = 1.152263, c_ev = 0.048467
+4. Raw Pseudo-Labeling:
+   - Loads soft pseudo-labels from the raw, unoptimized submission_v70.csv.
+   - Restores equal weighting (1.0 weight) for all training rows.
+5. Expanded Ensemble Stack:
+   - XGB-MAE-1 (d7)
+   - CAT-MAE-1 (d5)
+   - CAT-MAE-2 (d5)
+   - CAT-RMSE (d5)
+   - LGB-MAE (d5)
+   - XGB-MAE-2 (d5)
+   - LGB-RMSE (d5)
+   - XGB-RMSE (d5)
+6. Relaxed Post-Hoc Calibration bounds.
 """
 
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import GroupKFold, cross_val_score
+from sklearn.model_selection import GroupKFold
 from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explained_variance_score
 from sklearn.neighbors import KNeighborsRegressor
-from sklearn.preprocessing import PowerTransformer
 from scipy.optimize import minimize
 import xgboost as xgb
 import catboost as cb
@@ -35,10 +44,10 @@ warnings.filterwarnings("ignore")
 # CONFIGURATION
 # -----------------------------------------------------------------
 USE_PSEUDO = True
-SEEDS = [42, 2024]
+SEEDS = [42, 2024, 7]
 
 print("=" * 75)
-print("  ML OPSIDIAN vc2 - CRAZY 02 PIPELINE (2-SEED, v70 PSEUDO-LABELS)")
+print("  ML OPSIDIAN v77 - CORRECTED PIPELINE WITH RAW PSEUDO-LABELS")
 print("=" * 75)
 
 # -----------------------------------------------------------------
@@ -233,15 +242,6 @@ def engineer_features(df):
     df["lon_bin"] = (lon / 0.5).astype(int)
     df["grid_id"] = df["lat_bin"].astype(str) + "_" + df["lon_bin"].astype(str)
     
-    # [CRAZY FEATURE] Target-Inversion Score (TIS)
-    df["target_inversion_score"] = (
-        0.081 * df["distance_to_river_m_log1p"].fillna(0) 
-        - 0.069 * df["inundation_area_log"].fillna(0) 
-        - 0.063 * df["rainfall_7d_mm_log1p"].fillna(0) 
-        - 0.042 * df["extreme_weather_index"].fillna(0) 
-        + 0.037 * df["infrastructure_score"].fillna(0)
-    )
-
     df = df.drop(columns=["inundation_area_sqm", "landcover_mean_inundation_val"])
     return df
 
@@ -278,7 +278,7 @@ IGNORE_COLS = DROP_COLS + [
 SPATIAL_HELPERS = ["lat_bin", "lon_bin", "grid_id", "grid_id_100", "grid_id_050", "grid_id_025", "grid_id_012"]
 BASE_FEATURES = [c for c in train_df.columns if c not in IGNORE_COLS and c not in SPATIAL_HELPERS]
 
-# Pre-processing Conflict Resolution Column Definitions
+# Pre-processing Conflict Resolution Column Definitions (No global overwrite of train_df[TARGET])
 downstream_cols = [
     "confirmed_severe_risk", "no_flood_confirmed", "inundation_per_capita", "downstream_risk_count",
     "downstream_sig", "downstream_quad_sig", "confirmed_risk", "inundation_ratio", "flood_occurrence_yes",
@@ -313,24 +313,6 @@ def to_cat_fmt(df):
     return df
 
 # -----------------------------------------------------------------
-# conflict key builder helper
-# -----------------------------------------------------------------
-def get_conflict_key(df):
-    cat_cols_in_key = [c for c in CAT_FEATURES if c in conflict_key_cols]
-    cont_cols_to_bucket = ['latitude', 'longitude', 'elevation_m', 'distance_to_river_m', 'rainfall_7d_mm']
-    key_parts = []
-    for col in cat_cols_in_key:
-        key_parts.append(df[col].astype(str).fillna('missing'))
-    for col in cont_cols_to_bucket:
-        if col in df.columns:
-            try:
-                bins = pd.qcut(df[col], q=5, labels=False, duplicates='drop')
-            except Exception:
-                bins = pd.cut(df[col], bins=5, labels=False)
-            key_parts.append(bins.fillna(-1).astype(str))
-    return pd.concat(key_parts, axis=1).astype(str).agg('|'.join, axis=1)
-
-# -----------------------------------------------------------------
 # 5. MODEL DEFINITIONS & BASE ESTIMATORS
 # -----------------------------------------------------------------
 MODEL_NAMES = [
@@ -340,7 +322,8 @@ MODEL_NAMES = [
     "CAT-RMSE (d5)",
     "LGB-MAE (d5)",
     "XGB-MAE-2 (d5)",
-    "CAT-ORACLE (d4)"
+    "LGB-RMSE (d5)",
+    "XGB-RMSE (d5)"
 ]
 
 N_FOLDS     = 5
@@ -369,10 +352,13 @@ all_oof_stacked = np.zeros(len(original_y))
 all_tst_stacked = []
 
 print("\n" + "=" * 75)
-print(f"  5-FOLD SPATIAL GROUP CV - MULTI-SEED vc2 PIPELINE")
+print(f"  5-FOLD SPATIAL GROUP CV - MULTI-SEED v77 PIPELINE")
 print("=" * 75)
 
 t_start_global = time.time()
+
+# Active Competition Metric Coefficients (Calibrated from evaluate.py)
+c_mae, c_rmse, c_ev = 0.539328, 1.152263, 0.048467
 
 # -----------------------------------------------------------------
 # 6. L2 REGULARIZED CUSTOM METRIC-DRIVEN LEVEL-2 STACKER
@@ -391,7 +377,7 @@ def fit_metric_stacker(X_meta, y_true, alpha=0.1):
         ev = explained_variance_score(y_true, pred)
         
         # Target metric
-        score = (0.539328 * mae + 1.152263 * rmse) * (1.0 + 0.048467 * (1.0 - ev))
+        score = (c_mae * mae + c_rmse * rmse) * (1.0 + c_ev * (1.0 - ev))
         # L2 Penalty to preserve ensemble diversity
         reg = alpha * np.sum(w**2)
         return score + reg
@@ -412,14 +398,6 @@ for seed in SEEDS:
     oof_preds = {m: np.zeros(len(train_df)) for m in MODEL_NAMES}
     tst_preds = {m: np.zeros(len(test_df))  for m in MODEL_NAMES}
     
-    # 2 Seeds inherit standard regularizations from v67
-    xgb1_alpha, xgb1_lambda, xgb1_gamma = 2.0, 4.0, 0.1
-    cat1_l2 = 5.0
-    cat2_l2 = 12.0
-    cat_rmse_l2 = 8.0
-    lgb_alpha, lgb_lambda = 2.0, 5.0
-    xgb2_alpha, xgb2_lambda, xgb2_gamma = 5.0, 10.0, 0.2
-
     for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         t0 = time.time()
         
@@ -429,21 +407,16 @@ for seed in SEEDS:
         tr_rows = train_df.iloc[tr_idx].copy()
         va_rows = train_df.iloc[va_idx_clean].copy()
 
-        # Separate pseudo-row conflict resolution (prevents real/soft label cross-contamination)
-        real_tr_idx = tr_rows[tr_rows['is_pseudo'] == 0].index
-        pseudo_tr_idx = tr_rows[tr_rows['is_pseudo'] == 1].index
-        
-        if len(real_tr_idx) > 0:
-            real_tr_rows = tr_rows.loc[real_tr_idx].copy()
-            conflict_key_real = get_conflict_key(real_tr_rows)
-            group_medians_real = real_tr_rows.groupby(conflict_key_real)[TARGET].transform('median')
-            tr_rows.loc[real_tr_idx, TARGET] = group_medians_real
-            
-        if len(pseudo_tr_idx) > 0:
-            pseudo_tr_rows = tr_rows.loc[pseudo_tr_idx].copy()
-            conflict_key_pseudo = get_conflict_key(pseudo_tr_rows)
-            group_medians_pseudo = pseudo_tr_rows.groupby(conflict_key_pseudo)[TARGET].transform('median')
-            tr_rows.loc[pseudo_tr_idx, TARGET] = group_medians_pseudo
+        # Apply conflict resolution ONLY on the training fold (tr_rows)
+        temp_tr = tr_rows[conflict_key_cols].copy()
+        for col in temp_tr.columns:
+            if temp_tr[col].dtype in ['object', 'category']:
+                temp_tr[col] = temp_tr[col].astype(str).fillna('missing')
+            else:
+                temp_tr[col] = temp_tr[col].fillna(-999)
+                
+        group_medians_tr = tr_rows.groupby([temp_tr[c] for c in temp_tr.columns])[TARGET].transform('median')
+        tr_rows[TARGET] = group_medians_tr
 
         # Target encodings (strictly mapping statistics from REAL training rows only)
         real_tr_rows = tr_rows[tr_rows['is_pseudo'] == 0]
@@ -474,12 +447,7 @@ for seed in SEEDS:
                 
                 if col in STD_ENC_COLS:
                     tgt_df[f"{col}_target_std"] = tgt_df[col].astype(str).map(smoothed_std).fillna(GLOBAL_STD).astype(float)
-
-        # Compute Geospatial Risk Gradients (GRG)
-        for tgt_df in [tr_rows, va_rows, test_df]:
-            tgt_df["spatial_gradient_012_100"] = tgt_df["grid_id_012_target_enc"] - tgt_df["grid_id_100_target_enc"]
-            tgt_df["spatial_gradient_025_050"] = tgt_df["grid_id_025_target_enc"] - tgt_df["grid_id_050_target_enc"]
-
+                
         te_features = []
         for col in all_te_cols:
             te_features.append(f"{col}_target_enc")
@@ -488,15 +456,9 @@ for seed in SEEDS:
             if col in STD_ENC_COLS:
                 te_features.append(f"{col}_target_std")
                 
-        FEATURES = BASE_FEATURES + te_features + ["spatial_gradient_012_100", "spatial_gradient_025_050"]
+        FEATURES = BASE_FEATURES + te_features
 
-        y_tr_raw, y_va_raw = tr_rows[TARGET].values, va_rows[TARGET].values
-        
-        # Fit PowerTransformer (Yeo-Johnson) inside CV loop
-        pt = PowerTransformer(method='yeo-johnson', standardize=True)
-        y_tr_trans = pt.fit_transform(y_tr_raw.reshape(-1, 1)).flatten()
-        y_va_trans = pt.transform(y_va_raw.reshape(-1, 1)).flatten()
-
+        y_tr, y_va = tr_rows[TARGET], va_rows[TARGET]
         X_tr, X_va, X_te = tr_rows[FEATURES].copy(), va_rows[FEATURES].copy(), test_df[FEATURES].copy()
 
         # Dtype converters
@@ -525,129 +487,107 @@ for seed in SEEDS:
             X_va[col] = X_va[col].astype(str).astype(cdt)
             X_te[col] = X_te[col].astype(str).astype(cdt)
 
-        # Model 1: XGB-MAE-1 (d7)
+        # 1. XGB-MAE-1 (d7)
         xgb_m1 = xgb.XGBRegressor(
             n_estimators=4000, learning_rate=0.03, max_depth=7, min_child_weight=4,
             subsample=0.85, colsample_bytree=0.6, colsample_bylevel=0.6,
-            reg_alpha=xgb1_alpha, reg_lambda=xgb1_lambda, gamma=xgb1_gamma, max_delta_step=1,
+            reg_alpha=2.0, reg_lambda=4.0, gamma=0.1, max_delta_step=1,
             objective="reg:absoluteerror", eval_metric="mae", tree_method="hist",
             enable_categorical=False, early_stopping_rounds=100, random_state=seed, n_jobs=-1
         )
-        xgb_m1.fit(X_tr_xgb, y_tr_trans, eval_set=[(X_va_xgb, y_va_trans)], verbose=False)
+        xgb_m1.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
         
-        # Model 2: CAT-MAE-1 (d5)
+        # 2. CAT-MAE-1 (d5)
         cat_m1 = cb.CatBoostRegressor(
-            iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=cat1_l2,
+            iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=5.0,
             bagging_temperature=0.7, random_strength=2.0, border_count=254,
             loss_function="MAE", eval_metric="MAE", task_type="CPU",
             random_seed=seed, verbose=False
         )
-        cat_m1.fit(X_tr_cat, y_tr_trans, cat_features=cat_cols, eval_set=(X_va_cat, y_va_trans), early_stopping_rounds=150, verbose=False)
+        cat_m1.fit(X_tr_cat, y_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
-        # Model 3: CAT-MAE-2 (d5)
+        # 3. CAT-MAE-2 (d5)
         cat_m2 = cb.CatBoostRegressor(
-            iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=cat2_l2,
+            iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=12.0,
             bagging_temperature=0.4, random_strength=5.0, border_count=254,
             loss_function="MAE", eval_metric="MAE", task_type="CPU",
             random_seed=seed + 1, verbose=False
         )
-        cat_m2.fit(X_tr_cat, y_tr_trans, cat_features=cat_cols, eval_set=(X_va_cat, y_va_trans), early_stopping_rounds=150, verbose=False)
+        cat_m2.fit(X_tr_cat, y_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
-        # Model 4: CAT-RMSE (d5)
+        # 4. CAT-RMSE (d5)
         cat_rmse = cb.CatBoostRegressor(
-            iterations=4000, learning_rate=0.03, depth=5, l2_leaf_reg=cat_rmse_l2,
+            iterations=4000, learning_rate=0.03, depth=5, l2_leaf_reg=8.0,
             bagging_temperature=0.6, random_strength=3.0, border_count=254,
             loss_function="RMSE", eval_metric="RMSE", task_type="CPU",
             random_seed=seed + 2, verbose=False
         )
-        cat_rmse.fit(X_tr_cat, y_tr_trans, cat_features=cat_cols, eval_set=(X_va_cat, y_va_trans), early_stopping_rounds=150, verbose=False)
+        cat_rmse.fit(X_tr_cat, y_tr, cat_features=cat_cols, eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
 
-        # Model 5: LGB-MAE (d5)
+        # 5. LGB-MAE (d5)
         lgb_m1 = lgb.LGBMRegressor(
             n_estimators=4000, learning_rate=0.03, num_leaves=31, max_depth=5,
             min_child_samples=40, subsample=0.8, subsample_freq=1, colsample_bytree=0.6,
-            reg_alpha=lgb_alpha, reg_lambda=lgb_lambda, objective="regression_l1",
+            reg_alpha=2.0, reg_lambda=5.0, objective="regression_l1",
             random_state=seed, n_jobs=-1, verbosity=-1
         )
-        lgb_m1.fit(X_tr, y_tr_trans, eval_set=[(X_va, y_va_trans)], callbacks=[lgb.early_stopping(150, verbose=False)])
+        lgb_m1.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], callbacks=[lgb.early_stopping(150, verbose=False)])
 
-        # Model 6: XGB-MAE-2 (d5)
+        # 6. XGB-MAE-2 (d5)
         xgb_m2 = xgb.XGBRegressor(
             n_estimators=4000, learning_rate=0.03, max_depth=5, min_child_weight=6,
             subsample=0.75, colsample_bytree=0.5, colsample_bylevel=0.8,
-            reg_alpha=xgb2_alpha, reg_lambda=xgb2_lambda, gamma=xgb2_gamma, max_delta_step=1,
+            reg_alpha=5.0, reg_lambda=10.0, gamma=0.2, max_delta_step=1,
             objective="reg:absoluteerror", eval_metric="mae", tree_method="hist",
             enable_categorical=False, early_stopping_rounds=100, random_state=seed + 3, n_jobs=-1
         )
-        xgb_m2.fit(X_tr_xgb, y_tr_trans, eval_set=[(X_va_xgb, y_va_trans)], verbose=False)
+        xgb_m2.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
 
-        # Model 7: CAT-ORACLE (d4) (Trained strictly on downstream features in raw space)
-        oracle_features = ["flood_occurrence_current_event", "is_good_to_live", "reason_not_good_to_live", "inundation_area_log"]
-        cat_cols_oracle = [c for c in ["flood_occurrence_current_event", "is_good_to_live", "reason_not_good_to_live"] if c in oracle_features]
-        
-        def to_cat_fmt_oracle(df):
-            df = df.copy()
-            for col in cat_cols_oracle:
-                if col in df.columns:
-                    df[col] = df[col].astype(str)
-            return df
-            
-        X_tr_oracle = to_cat_fmt_oracle(X_tr[oracle_features])
-        X_va_oracle = to_cat_fmt_oracle(X_va[oracle_features])
-        X_te_oracle = to_cat_fmt_oracle(X_te[oracle_features])
-        
-        cat_oracle = cb.CatBoostRegressor(
-            iterations=3000, learning_rate=0.05, depth=4, l2_leaf_reg=3.0,
-            loss_function="MAE", eval_metric="MAE", task_type="CPU",
-            random_seed=seed, verbose=False
+        # 7. LGB-RMSE (d5)
+        lgb_rmse = lgb.LGBMRegressor(
+            n_estimators=4000, learning_rate=0.03, num_leaves=31, max_depth=5,
+            min_child_samples=40, subsample=0.8, subsample_freq=1, colsample_bytree=0.6,
+            reg_alpha=2.0, reg_lambda=5.0, objective="regression",
+            random_state=seed + 4, n_jobs=-1, verbosity=-1
         )
-        cat_oracle.fit(X_tr_oracle, y_tr_raw, cat_features=cat_cols_oracle, eval_set=(X_va_oracle, y_va_raw), early_stopping_rounds=150, verbose=False)
+        lgb_rmse.fit(X_tr, y_tr, eval_set=[(X_va, y_va)], callbacks=[lgb.early_stopping(150, verbose=False)])
 
-        # Predictions back to raw space (inverse-transforming models 1-6)
-        pred_va_xgb_m1 = np.clip(pt.inverse_transform(xgb_m1.predict(X_va_xgb).reshape(-1, 1)).flatten(), 0.0, 1.0)
-        pred_te_xgb_m1 = np.clip(pt.inverse_transform(xgb_m1.predict(X_te_xgb).reshape(-1, 1)).flatten(), 0.0, 1.0)
+        # 8. XGB-RMSE (d5)
+        xgb_rmse = xgb.XGBRegressor(
+            n_estimators=4000, learning_rate=0.03, max_depth=5, min_child_weight=6,
+            subsample=0.75, colsample_bytree=0.5, colsample_bylevel=0.8,
+            reg_alpha=5.0, reg_lambda=10.0, gamma=0.2, max_delta_step=1,
+            objective="reg:squarederror", eval_metric="rmse", tree_method="hist",
+            enable_categorical=False, early_stopping_rounds=100, random_state=seed + 5, n_jobs=-1
+        )
+        xgb_rmse.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
 
-        pred_va_cat_m1 = np.clip(pt.inverse_transform(cat_m1.predict(X_va_cat).reshape(-1, 1)).flatten(), 0.0, 1.0)
-        pred_te_cat_m1 = np.clip(pt.inverse_transform(cat_m1.predict(X_te_cat).reshape(-1, 1)).flatten(), 0.0, 1.0)
+        # Predictions
+        oof_preds["XGB-MAE-1 (d7)"][va_idx_clean] = xgb_m1.predict(X_va_xgb)
+        oof_preds["CAT-MAE-1 (d5)"][va_idx_clean] = cat_m1.predict(X_va_cat)
+        oof_preds["CAT-MAE-2 (d5)"][va_idx_clean] = cat_m2.predict(X_va_cat)
+        oof_preds["CAT-RMSE (d5)"][va_idx_clean] = cat_rmse.predict(X_va_cat)
+        oof_preds["LGB-MAE (d5)"][va_idx_clean] = lgb_m1.predict(X_va)
+        oof_preds["XGB-MAE-2 (d5)"][va_idx_clean] = xgb_m2.predict(X_va_xgb)
+        oof_preds["LGB-RMSE (d5)"][va_idx_clean] = lgb_rmse.predict(X_va)
+        oof_preds["XGB-RMSE (d5)"][va_idx_clean] = xgb_rmse.predict(X_va_xgb)
 
-        pred_va_cat_m2 = np.clip(pt.inverse_transform(cat_m2.predict(X_va_cat).reshape(-1, 1)).flatten(), 0.0, 1.0)
-        pred_te_cat_m2 = np.clip(pt.inverse_transform(cat_m2.predict(X_te_cat).reshape(-1, 1)).flatten(), 0.0, 1.0)
-
-        pred_va_cat_rmse = np.clip(pt.inverse_transform(cat_rmse.predict(X_va_cat).reshape(-1, 1)).flatten(), 0.0, 1.0)
-        pred_te_cat_rmse = np.clip(pt.inverse_transform(cat_rmse.predict(X_te_cat).reshape(-1, 1)).flatten(), 0.0, 1.0)
-
-        pred_va_lgb_m1 = np.clip(pt.inverse_transform(lgb_m1.predict(X_va).reshape(-1, 1)).flatten(), 0.0, 1.0)
-        pred_te_lgb_m1 = np.clip(pt.inverse_transform(lgb_m1.predict(X_te).reshape(-1, 1)).flatten(), 0.0, 1.0)
-
-        pred_va_xgb_m2 = np.clip(pt.inverse_transform(xgb_m2.predict(X_va_xgb).reshape(-1, 1)).flatten(), 0.0, 1.0)
-        pred_te_xgb_m2 = np.clip(pt.inverse_transform(xgb_m2.predict(X_te_xgb).reshape(-1, 1)).flatten(), 0.0, 1.0)
-
-        pred_va_oracle = np.clip(cat_oracle.predict(X_va_oracle), 0.0, 1.0)
-        pred_te_oracle = np.clip(cat_oracle.predict(X_te_oracle), 0.0, 1.0)
-
-        # Store predictions
-        oof_preds["XGB-MAE-1 (d7)"][va_idx_clean] = pred_va_xgb_m1
-        oof_preds["CAT-MAE-1 (d5)"][va_idx_clean] = pred_va_cat_m1
-        oof_preds["CAT-MAE-2 (d5)"][va_idx_clean] = pred_va_cat_m2
-        oof_preds["CAT-RMSE (d5)"][va_idx_clean] = pred_va_cat_rmse
-        oof_preds["LGB-MAE (d5)"][va_idx_clean] = pred_va_lgb_m1
-        oof_preds["XGB-MAE-2 (d5)"][va_idx_clean] = pred_va_xgb_m2
-        oof_preds["CAT-ORACLE (d4)"][va_idx_clean] = pred_va_oracle
-
-        tst_preds["XGB-MAE-1 (d7)"] += pred_te_xgb_m1 / N_FOLDS
-        tst_preds["CAT-MAE-1 (d5)"] += pred_te_cat_m1 / N_FOLDS
-        tst_preds["CAT-MAE-2 (d5)"] += pred_te_cat_m2 / N_FOLDS
-        tst_preds["CAT-RMSE (d5)"] += pred_te_cat_rmse / N_FOLDS
-        tst_preds["LGB-MAE (d5)"]  += pred_te_lgb_m1 / N_FOLDS
-        tst_preds["XGB-MAE-2 (d5)"] += pred_te_xgb_m2 / N_FOLDS
-        tst_preds["CAT-ORACLE (d4)"] += pred_te_oracle / N_FOLDS
+        tst_preds["XGB-MAE-1 (d7)"] += xgb_m1.predict(X_te_xgb) / N_FOLDS
+        tst_preds["CAT-MAE-1 (d5)"] += cat_m1.predict(X_te_cat) / N_FOLDS
+        tst_preds["CAT-MAE-2 (d5)"] += cat_m2.predict(X_te_cat) / N_FOLDS
+        tst_preds["CAT-RMSE (d5)"] += cat_rmse.predict(X_te_cat) / N_FOLDS
+        tst_preds["LGB-MAE (d5)"]  += lgb_m1.predict(X_te) / N_FOLDS
+        tst_preds["XGB-MAE-2 (d5)"] += xgb_m2.predict(X_te_xgb) / N_FOLDS
+        tst_preds["LGB-RMSE (d5)"] += lgb_rmse.predict(X_te) / N_FOLDS
+        tst_preds["XGB-RMSE (d5)"] += xgb_rmse.predict(X_te_xgb) / N_FOLDS
 
         # Evaluate OOF average for this fold against raw validation targets
         oof_avg_fold = np.mean([oof_preds[m][va_idx_clean] for m in MODEL_NAMES], axis=0)
-        f_mae  = mean_absolute_error(y_va_raw, oof_avg_fold)
-        f_rmse = root_mean_squared_error(y_va_raw, oof_avg_fold)
-        f_ev   = explained_variance_score(y_va_raw, oof_avg_fold)
-        print(f"      Fold {fold+1}/5 | XGB1_it={xgb_m1.best_iteration:<4} CAT1_it={cat_m1.best_iteration_:<4} CAT2_it={cat_m2.best_iteration_:<4} CAT3_it={cat_rmse.best_iteration_:<4} LGB_it={lgb_m1.best_iteration_:<4} XGB2_it={xgb_m2.best_iteration:<4} ORACLE_it={cat_oracle.best_iteration_:<4} | [ENS MAE={f_mae:.4f}] [{time.time() - t0:.0f}s]")
+        y_va_arr = y_va.values
+        f_mae  = mean_absolute_error(y_va_arr, oof_avg_fold)
+        f_rmse = root_mean_squared_error(y_va_arr, oof_avg_fold)
+        f_ev   = explained_variance_score(y_va_arr, oof_avg_fold)
+        print(f"      Fold {fold+1}/5 | XGB1={xgb_m1.best_iteration:<3} CAT1={cat_m1.best_iteration_:<3} CAT2={cat_m2.best_iteration_:<3} CAT3={cat_rmse.best_iteration_:<3} LGB1={lgb_m1.best_iteration_:<3} XGB2={xgb_m2.best_iteration:<3} LGB2={lgb_rmse.best_iteration_:<3} XGB3={xgb_rmse.best_iteration:<3} | [ENS MAE={f_mae:.4f}] [{time.time() - t0:.0f}s]")
 
     # Meta features for stacking
     oof_meta_seed = np.column_stack([oof_preds[m][real_mask] for m in MODEL_NAMES])
@@ -667,7 +607,7 @@ for seed in SEEDS:
         cv_mae = mean_absolute_error(original_y, oof_cv)
         cv_rmse = root_mean_squared_error(original_y, oof_cv)
         cv_ev = explained_variance_score(original_y, oof_cv)
-        cv_score = (0.539328 * cv_mae + 1.152263 * cv_rmse) * (1.0 + 0.048467 * (1.0 - cv_ev))
+        cv_score = (c_mae * cv_mae + c_rmse * cv_rmse) * (1.0 + c_ev * (1.0 - cv_ev))
         
         if cv_score < best_score:
             best_score = cv_score
@@ -696,15 +636,13 @@ for seed in SEEDS:
 # -----------------------------------------------------------------
 # 7. GLOBAL ENSEMBLE RESULTS & METRICS
 # -----------------------------------------------------------------
-c_mae, c_rmse, c_ev = 0.539328, 1.152263, 0.048467
-
 g_mae  = mean_absolute_error(original_y, all_oof_stacked)
 g_rmse = root_mean_squared_error(original_y, all_oof_stacked)
 g_ev   = explained_variance_score(original_y, all_oof_stacked)
 g_lb   = (c_mae * g_mae + c_rmse * g_rmse) * (1.0 + c_ev * (1.0 - g_ev))
 
 print("\n" + "=" * 75)
-print("  GLOBAL OOF RESULTS (vc2 - Raw Custom Stacking)")
+print("  GLOBAL OOF RESULTS (v77 - Raw Custom Stacking)")
 print("=" * 75)
 print(f"    [ALL ROWS]")
 print(f"      MAE            : {g_mae:.5f}")
@@ -722,8 +660,8 @@ for fold, (tr_idx, va_idx) in enumerate(gkf_l2.split(original_df, original_y, or
     fold_results_all.append({"fold": fold+1, "MAE": f_mae, "RMSE": f_rmse, "EV": f_ev})
 
 fold_report = pd.DataFrame(fold_results_all)
-fold_report.to_csv("fold_report_vc2.csv", index=False)
-fold_report.to_csv("submissions/fold_report_vc2.csv", index=False)
+fold_report.to_csv("fold_report_v77.csv", index=False)
+fold_report.to_csv("submissions/fold_report_v77.csv", index=False)
 print(f"\n[DONE] Saved fold reports.")
 
 tst_stacked_avg = np.clip(np.mean(all_tst_stacked, axis=0), 0.0, 1.0)
@@ -731,19 +669,19 @@ submission = pd.DataFrame({
     "record_id"       : test_df[ID_COL],
     "flood_risk_score": tst_stacked_avg
 })
-submission.to_csv("submission_vc2.csv", index=False)
-submission.to_csv("submissions/submission_vc2.csv", index=False)
-print(f"[DONE] Saved submission_vc2.csv ({len(submission)} rows)")
+submission.to_csv("submission_v77.csv", index=False)
+submission.to_csv("submissions/submission_v77.csv", index=False)
+print(f"[DONE] Saved submission_v77.csv ({len(submission)} rows)")
 
-np.save("oof_vc2.npy", all_oof_stacked)
-np.save("submissions/oof_vc2.npy", all_oof_stacked)
-print(f"[DONE] Saved oof_vc2.npy")
+np.save("oof_v77.npy", all_oof_stacked)
+np.save("submissions/oof_v77.npy", all_oof_stacked)
+print(f"[DONE] Saved oof_v77.npy")
 
 # -----------------------------------------------------------------
 # 8. INTEGRATED POST-HOC POWER TRANSFORMATION OPTIMIZATION
 # -----------------------------------------------------------------
 print("\n" + "=" * 75)
-print("  POST-HOC POWER TRANSFORMATION OPTIMIZATION (vc2)")
+print("  POST-HOC POWER TRANSFORMATION OPTIMIZATION (v77)")
 print("=" * 75)
 
 def transform_loss(params):
@@ -775,9 +713,9 @@ opt_lb = (c_mae * opt_mae + c_rmse * opt_rmse) * (1.0 + c_ev * (1.0 - opt_ev))
 print(f"\nOptimized OOF LB Score: {opt_lb:.5f}")
 print(f"  MAE: {opt_mae:.5f}, RMSE: {opt_rmse:.5f}, EV: {opt_ev:.5f}")
 
-np.save("oof_vc2_optimized.npy", opt_oof)
-np.save("submissions/oof_vc2_optimized.npy", opt_oof)
-print(f"[DONE] Saved oof_vc2_optimized.npy")
+np.save("oof_v77_optimized.npy", opt_oof)
+np.save("submissions/oof_v77_optimized.npy", opt_oof)
+print(f"[DONE] Saved oof_v77_optimized.npy")
 
 # Transform and save optimized test predictions
 opt_test_preds = a_opt * np.power(np.clip(tst_stacked_avg, 1e-6, None), b_opt) + c_opt
@@ -787,9 +725,9 @@ submission_opt = pd.DataFrame({
     "record_id"       : test_df[ID_COL],
     "flood_risk_score": opt_test_preds
 })
-submission_opt.to_csv("submission_vc2_optimized.csv", index=False)
-submission_opt.to_csv("submissions/submission_vc2_optimized.csv", index=False)
-print(f"[DONE] Saved submission_vc2_optimized.csv ({len(submission_opt)} rows)")
+submission_opt.to_csv("submission_v77_optimized.csv", index=False)
+submission_opt.to_csv("submissions/submission_v77_optimized.csv", index=False)
+print(f"[DONE] Saved submission_v77_optimized.csv ({len(submission_opt)} rows)")
 print(f"  Optimized range  : [{opt_test_preds.min():.4f}, {opt_test_preds.max():.4f}]")
 print(f"  Total Time       : {time.time() - t_start_global:.1f}s")
 print("=" * 75)

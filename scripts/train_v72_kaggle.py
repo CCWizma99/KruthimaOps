@@ -51,8 +51,8 @@ print(f"   Train: {train_df.shape}  Test: {test_df.shape}")
 # -----------------------------------------------------------------
 print("\n[FEAT] Extracting coordinate decimal precision fingerprints...")
 for df in [train_df, test_df]:
-    df['lat_decimal_len'] = df['latitude'].astype(str).apply(lambda x: len(x.split('.')[1]) if '.' in x and x.lower() != 'nan' else 0)
-    df['lon_decimal_len'] = df['longitude'].astype(str).apply(lambda x: len(x.split('.')[1]) if '.' in x and x.lower() != 'nan' else 0)
+    df['lat_decimal_len'] = df['latitude'].apply(lambda x: len(str(x).split('.')[1]) if '.' in str(x) and str(x).lower() != 'nan' else 0)
+    df['lon_decimal_len'] = df['longitude'].apply(lambda x: len(str(x).split('.')[1]) if '.' in str(x) and str(x).lower() != 'nan' else 0)
 
 # -----------------------------------------------------------------
 # 1.6. SEMI-SUPERVISED PSEUDO-LABELING
@@ -670,7 +670,7 @@ def transform_loss(params):
     return (c_mae * mae + c_rmse * rmse) * (1.0 + c_ev * (1.0 - ev))
 
 initial_guess = [1.0, 1.0, 0.0]
-bounds = [(0.5, 1.5), (0.5, 2.0), (-0.15, 0.15)]
+bounds = [(0.1, 3.0), (0.1, 5.0), (-0.5, 0.5)]
 
 res_opt = minimize(transform_loss, initial_guess, bounds=bounds, method='L-BFGS-B')
 a_opt, b_opt, c_opt = res_opt.x
