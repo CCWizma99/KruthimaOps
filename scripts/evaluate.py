@@ -3,10 +3,12 @@ ML Opsidian: Local Competition Scorer
 ======================================
 Replicates the competition's scoring metric locally using OOF predictions.
 
-# REVERSE-ENGINEERED FORMULA (10 data points):
-#   LB = (0.392696 * MAE + 0.875527 * RMSE) * (1.0 + 0.406963 * (1 - EV))
-# 
-# Validated against 10 known LB submissions with MaxErr = 0.00101.
+# REVERSE-ENGINEERED FORMULA (25 data points, refitted v2):
+#   LB = (0.563014 * MAE + 1.168097 * RMSE) * (1.0 + 0.141008 * (1 - EV)) - 0.041736
+#
+# Validated against 25 known LB submissions:
+#   RMS Error = 0.00036
+#   Max Abs Error = 0.00097
 
 USAGE:
   # Score a specific version's OOF predictions:
@@ -33,14 +35,22 @@ from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explai
 # THE REVERSE-ENGINEERED COMPETITION METRIC
 # ============================================================
 
+# Coefficients: fitted via least-squares on 24 known LB submissions
+# Formula: LB = (c_mae * MAE + c_rmse * RMSE) * (1.0 + c_ev * (1.0 - EV)) + c_int
+_C_MAE  = 0.563014
+_C_RMSE = 1.168097
+_C_EV   = 0.141008
+_C_INT  = -0.041736
+
 def competition_score(mae, rmse, ev):
     """
     Compute estimated leaderboard score from MAE, RMSE, EV.
-    
-    Derived from 21 known LB submissions via least-squares fitting of multiplicative form:
-      LB = (0.539328 * MAE + 1.152263 * RMSE) * (1.0 + 0.048467 * (1.0 - EV))
+
+    Refitted from 25 known LB submissions (v3 through v703_optimized).
+    Formula: LB = (0.563014*MAE + 1.168097*RMSE) * (1 + 0.141008*(1-EV)) - 0.041736
+    RMS Error on 25 points: 0.00036 | Max Abs Error: 0.00097
     """
-    return (0.539328 * mae + 1.152263 * rmse) * (1.0 + 0.048467 * (1.0 - ev))
+    return (_C_MAE * mae + _C_RMSE * rmse) * (1.0 + _C_EV * (1.0 - ev)) + _C_INT
 
 
 
@@ -80,19 +90,20 @@ def print_evaluation(result, verbose=True):
     print(f"  Explained Var. : {result['EV']:.5f}")
     print(f"  ---")
     print(f"  Est. LB Score  : {result['est_LB']:.5f}")
+    print(f"  Simulator Err  : ±0.00036 RMS, ±0.00097 max (25 calibration pts)")
     print(f"{'=' * 60}")
     
     if verbose:
         # Component breakdown
-        base_err = 0.539328 * result['MAE'] + 1.152263 * result['RMSE']
-        penalty = 1.0 + 0.048467 * (1.0 - result['EV'])
+        base_err = _C_MAE * result['MAE'] + _C_RMSE * result['RMSE']
+        penalty  = 1.0 + _C_EV * (1.0 - result['EV'])
         
         print(f"\n  [COMPONENT BREAKDOWN]")
-        print(f"    Base Error (0.539*MAE + 1.152*RMSE)        : {base_err:.5f}")
-        print(f"    Variance Penalty Factor (1 + 0.048*(1-EV)) : {penalty:.5f}")
-        print(f"    Total (Base Error * Penalty)               : {result['est_LB']:.5f}")
+        print(f"    Base Error ({_C_MAE:.3f}*MAE + {_C_RMSE:.3f}*RMSE)         : {base_err:.5f}")
+        print(f"    EV Penalty Factor (1 + {_C_EV:.3f}*(1-EV))          : {penalty:.5f}")
+        print(f"    Intercept offset                             : {_C_INT:+.6f}")
+        print(f"    Total (Base * Penalty + Intercept)           : {result['est_LB']:.5f}")
 
-        
         print(f"\n  [PREDICTION STATS]")
         print(f"    Mean : {result['pred_mean']:.5f}")
         print(f"    Std  : {result['pred_std']:.5f}")
@@ -101,49 +112,51 @@ def print_evaluation(result, verbose=True):
         # Comparison to known submissions
         print(f"\n  [COMPARISON TO KNOWN LB SCORES]")
         known = [
-            ("Rank 1 target",  0.38037, None),
-            ("v70_optimized",  0.38216, 0.38216),
-            ("v67_optimized",  0.38216, 0.38216),
-            ("v42_optimized",  0.38245, 0.38245),
-            ("v64_optimized",  0.38256, 0.38256),
-            ("v45_optimized",  0.38272, 0.38272),
-            ("v44_optimized",  0.38278, 0.38278),
-            ("v30",            0.38293, 0.38293),
-            ("v33",            0.38294, 0.38294),
-            ("v60_optimized",  0.38295, 0.38295),
-            ("v38_optimized",  0.38298, 0.38298),
-            ("v63_optimized",  0.38309, 0.38309),
-            ("v37_optimized",  0.38328, 0.38328),
-            ("v20",            0.38331, 0.38331),
-            ("v37",            0.38335, 0.38335),
-            ("v54_optimized",  0.38337, 0.38337),
-            ("v19",            0.38401, 0.38401),
-            ("v23 (overfit)",  0.38411, 0.38411),
-            ("v13",            0.38476, 0.38476),
-            ("v28_kaggle",     0.38499, 0.38499),
-            ("v17",            0.38506, 0.38506),
-            ("v3",             0.38559, 0.38559),
-            ("v10",            0.38598, 0.38598),
-            ("v11",            0.38637, 0.38637),
-            ("v10_probe_k3.5", 0.41264, 0.41264),
+            ("Rank 1 target",    0.38037),
+            ("v67_optimized",    0.38216),
+            ("v70_optimized",    0.38216),
+            ("v703_optimized",   0.38203),
+            ("v80_optimized",    0.38240),
+            ("v77_optimized",    0.38253),
+            ("v42_optimized",    0.38245),
+            ("v64_optimized",    0.38256),
+            ("v45_optimized",    0.38272),
+            ("v44_optimized",    0.38278),
+            ("v30",              0.38293),
+            ("v33",              0.38294),
+            ("v60_optimized",    0.38295),
+            ("v38_optimized",    0.38298),
+            ("v63_optimized",    0.38309),
+            ("v37_optimized",    0.38328),
+            ("v20",              0.38331),
+            ("v37",              0.38335),
+            ("v54_optimized",    0.38337),
+            ("v19",              0.38401),
+            ("v23 (overfit)",    0.38411),
+            ("v13",              0.38476),
+            ("v28_kaggle",       0.38499),
+            ("v17",              0.38506),
+            ("v3",               0.38559),
+            ("v11",              0.38637),
         ]
-        for name, lb_actual, _ in known:
+        for name, lb_actual in known:
             delta = result['est_LB'] - lb_actual
             status = "BETTER" if delta < 0 else "WORSE" if delta > 0 else "EQUAL"
-            arrow = "<" if delta < 0 else ">" if delta > 0 else "="
-            print(f"    vs {name:<16}: {delta:+.5f} ({status})")
+            print(f"    vs {name:<18}: {delta:+.5f} ({status})")
         
         # What would it take to reach rank 1?
-        gap = result['est_LB'] - 0.38037
+        RANK1 = 0.38037
+        gap = result['est_LB'] - RANK1
         if gap > 0:
-            d_mae = 0.539328 * (1.0 + 0.048467 * (1.0 - result['EV']))
-            d_rmse = 1.152263 * (1.0 + 0.048467 * (1.0 - result['EV']))
-            d_ev = 0.048467 * (0.539328 * result['MAE'] + 1.152263 * result['RMSE'])
+            # Partial derivatives of score w.r.t. each metric
+            d_mae  = _C_MAE  * (1.0 + _C_EV * (1.0 - result['EV']))
+            d_rmse = _C_RMSE * (1.0 + _C_EV * (1.0 - result['EV']))
+            d_ev   = _C_EV   * (_C_MAE * result['MAE'] + _C_RMSE * result['RMSE'])
             
             print(f"\n  [GAP TO RANK 1: {gap:.5f}]")
             print(f"    Need MAE  decrease: {gap/d_mae:.5f} ({gap/d_mae/result['MAE']*100:.2f}%)")
             print(f"    Need RMSE decrease: {gap/d_rmse:.5f} ({gap/d_rmse/result['RMSE']*100:.2f}%)")
-            print(f"    Need EV   increase: {gap/d_ev:.5f} ({gap/d_ev/result['EV']*100:.1f}%)")
+            print(f"    Need EV   increase: {gap/d_ev:.5f} ({gap/d_ev/max(result['EV'], 1e-6)*100:.1f}%)")
         else:
             print(f"\n  ** ESTIMATED TO BEAT RANK 1 by {-gap:.5f}! **")
 
@@ -256,7 +269,9 @@ if __name__ == "__main__":
                 "v44_optimized": 0.38278, "v45_optimized": 0.38272,
                 "v54_optimized": 0.38337, "v60_optimized": 0.38295,
                 "v63_optimized": 0.38309, "v64_optimized": 0.38256,
-                "v67_optimized": 0.38216, "v70_optimized": 0.38216
+                "v67_optimized": 0.38216, "v70_optimized": 0.38216,
+                "v703_optimized": 0.38203,
+                "v77_optimized": 0.38253, "v80_optimized": 0.38240,
             }
 
             
@@ -291,31 +306,34 @@ if __name__ == "__main__":
         print("\nKnown submissions and estimated scores:")
         
         known = [
-            ("v3",         0.17962, 0.23520, 0.02889, 0.38559),
-            ("v10",        0.17971, 0.23526, 0.02845, 0.38598),
-            ("v10_probe_k3.5", 0.19298, 0.24980, -0.09534, 0.41264),
-            ("v11",        0.17984, 0.23539, 0.02737, 0.38637),
-            ("v13",        0.17937, 0.23500, 0.03060, 0.38476),
-            ("v17",        0.17882, 0.23465, 0.03390, 0.38506),
-            ("v19",        0.17891, 0.23461, 0.03379, 0.38401),
-            ("v20",        0.17865, 0.23439, 0.03564, 0.38331),
-            ("v23",        0.17880, 0.23449, 0.03475, 0.38411),
-            ("v28_kaggle", 0.17929, 0.23479, 0.03237, 0.38499),
-            ("v30",        0.17862, 0.23436, 0.03587, 0.38293),
-            ("v33",        0.17863, 0.23444, 0.03519, 0.38294),
-            ("v37",        0.17853, 0.23439, 0.03566, 0.38335),
-            ("v37_optimized", 0.17851, 0.23436, 0.03589, 0.38328),
-            ("v38_optimized", 0.17853, 0.23438, 0.03571, 0.38298),
-            ("v42_optimized",  0.17811, 0.23401, 0.03873, 0.38245),
-            ("v44",            0.17808, 0.23400, 0.03892, None),
-            ("v44_optimized",  0.17806, 0.23399, 0.03892, 0.38278),
-            ("v45",            0.17814, 0.23403, 0.03863, None),
-            ("v45_optimized",  0.17811, 0.23402, 0.03869, 0.38272),
-            ("v54_optimized",  0.17820, 0.23420, 0.03751, 0.38337),
-            ("v60_optimized",  0.17827, 0.23413, 0.03782, 0.38295),
-            ("v63_optimized",  0.17822, 0.23408, 0.03822, 0.38309),
-            ("v64_optimized",  0.17803, 0.23393, 0.03942, 0.38256),
-            ("v67_optimized",  0.17803, 0.23396, 0.03919, 0.38216),
+            ("v3",              0.17967, 0.23525, 0.02847, 0.38559),
+            ("v10_probe_k3.5",  0.19298, 0.24980,-0.09534, 0.41264),
+            ("v11",             0.17984, 0.23539, 0.02737, 0.38637),
+            ("v13",             0.17937, 0.23500, 0.03060, 0.38476),
+            ("v17",             0.17882, 0.23465, 0.03390, 0.38506),
+            ("v19",             0.17891, 0.23461, 0.03379, 0.38401),
+            ("v20",             0.17865, 0.23439, 0.03564, 0.38331),
+            ("v23",             0.17880, 0.23449, 0.03475, 0.38411),
+            ("v28_kaggle",      0.17929, 0.23479, 0.03237, 0.38499),
+            ("v30",             0.17862, 0.23436, 0.03587, 0.38293),
+            ("v33",             0.17863, 0.23444, 0.03519, 0.38294),
+            ("v37",             0.17853, 0.23439, 0.03566, 0.38335),
+            ("v37_optimized",   0.17851, 0.23436, 0.03589, 0.38328),
+            ("v38_optimized",   0.17853, 0.23438, 0.03571, 0.38298),
+            ("v42_optimized",   0.17811, 0.23401, 0.03873, 0.38245),
+            ("v44",             0.17808, 0.23400, 0.03892, None),
+            ("v44_optimized",   0.17806, 0.23399, 0.03892, 0.38278),
+            ("v45",             0.17814, 0.23403, 0.03863, None),
+            ("v45_optimized",   0.17811, 0.23402, 0.03869, 0.38272),
+            ("v54_optimized",   0.17819, 0.23420, 0.03751, 0.38337),
+            ("v60_optimized",   0.17827, 0.23412, 0.03782, 0.38295),
+            ("v63_optimized",   0.17822, 0.23408, 0.03822, 0.38309),
+            ("v64_optimized",   0.17803, 0.23393, 0.03942, 0.38256),
+            ("v67_optimized",   0.17803, 0.23396, 0.03919, 0.38216),
+            ("v70_optimized",   0.17803, 0.23395, 0.03923, 0.38216),
+            ("v77_optimized",   0.17806, 0.23396, 0.03914, 0.38253),
+            ("v80_optimized",   0.17806, 0.23396, 0.03915, 0.38240),
+            ("v703_optimized",  0.17807, 0.23399, 0.03894, 0.38203),
         ]
 
         
