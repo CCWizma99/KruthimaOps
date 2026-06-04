@@ -103,8 +103,9 @@ v69_opt  0.178240   0.234100    0.038060  —          0.382930  Calibrated 2-Se
 v701_opt 0.178660   0.234480    0.034910  —          0.383680  Confidence Pseudo-Weights + LGB-Q70 + Spatial Gradients
 v72_opt  0.178080   0.234000    0.038860  —          0.382710  Optimized v72 with separate target smoothing
 v73_opt  0.178160   0.234060    0.038330  —          0.382840  Optimized v73 with calibrated metric stacker
-v77_opt  0.178060   0.233960    0.039140  —          0.382650  Optimized v77 with calibrated stacker coefficients
-v80_opt  0.178060   0.233960    0.039150  —          0.382640  Optimized v80 with raw pseudo-labels
+v77_opt  0.178060   0.233960    0.039140  0.382530   0.382650  Optimized v77 with calibrated stacker coefficients
+v80_opt  0.178060   0.233960    0.039150  0.382400   0.382640  Optimized v80 with raw pseudo-labels
+v703_opt 0.178066   0.233989    0.038936  0.382030   0.382470  NEW PROJECT PEAK — 3-Seed + Target Conflict Resolution variant
 vc1_opt  0.178120   0.234020    0.038650  —          0.382760  4-Seed Hybrid: TIS + GRG + Stacking Advances (Crazy 01)
 vc2_opt  0.178130   0.234020    0.038710  —          0.382760  2-Seed Hybrid Stacking + TIS + GRG (Crazy 02)
 
