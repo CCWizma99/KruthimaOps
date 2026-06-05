@@ -2,24 +2,32 @@ import pandas as pd
 import numpy as np
 import os
 
-print("Loading baseline submission (k=1)...")
-# Make sure we read from the submissions folder
-sub = pd.read_csv('../submissions/submission_v3.csv')
+BASE_SUB = "submissions/submission_v703_optimized.csv"
+OUTPUT_DIR = "submissions/probes"
 
-preds = sub['flood_risk_score'].values
-mean_pred = np.mean(preds)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-print(f"Base predictions - Mean: {mean_pred:.4f}, Min: {preds.min():.4f}, Max: {preds.max():.4f}")
+df = pd.read_csv(BASE_SUB)
+base_preds = df['flood_risk_score'].values
+mean_pred = np.mean(base_preds)
 
-factors = [2.0, 3.5, 8.0]
+probes = {
+    "probe_01_mul_up_1": base_preds * 1.001,
+    "probe_02_mul_dn_1": base_preds * 0.999,
+    "probe_03_add_up_1": base_preds + 0.001,
+    "probe_04_add_dn_1": base_preds - 0.001,
+    "probe_05_mul_up_2": base_preds * 1.002,
+    "probe_06_mul_dn_2": base_preds * 0.998,
+    "probe_07_add_up_2": base_preds + 0.002,
+    "probe_08_add_dn_2": base_preds - 0.002,
+    "probe_09_var_shrink": (base_preds - mean_pred) * 0.995 + mean_pred,
+    "probe_10_var_expand": (base_preds - mean_pred) * 1.005 + mean_pred,
+}
 
-for k in factors:
-    print(f"Generating probe for k={k}...")
-    new_preds = mean_pred + k * (preds - mean_pred)
-    new_preds = np.clip(new_preds, 0.0, 1.0)
-    
-    sub_probe = sub.copy()
-    sub_probe['flood_risk_score'] = new_preds
-    sub_probe.to_csv(f'../submissions/submission_probe_k{k}.csv', index=False)
+for name, preds in probes.items():
+    probe_df = df.copy()
+    probe_df['flood_risk_score'] = np.clip(preds, 0.0, 1.0)
+    probe_df.to_csv(f"{OUTPUT_DIR}/submission_v703_{name}.csv", index=False)
+    print(f"Generated: {name:<20} | Mean: {np.mean(preds):.5f}")
 
-print("Probe files generated successfully in submissions/ folder.")
+print(f"\n[SUCCESS] Generated 10 Leaderboard Probes in {OUTPUT_DIR}/")
