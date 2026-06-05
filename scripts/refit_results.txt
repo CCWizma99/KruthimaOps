@@ -1,5 +1,6 @@
-c_mae=0.539328
-c_rmse=1.152263
-c_ev=0.048467
-mean_abs_error=0.000306
-max_abs_error=0.001058
+c_mae=0.544177
+c_rmse=1.148953
+c_ev=0.049625
+c_int=-0.000580
+mean_abs_error=0.000301
+max_abs_error=0.001132

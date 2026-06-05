@@ -3,12 +3,12 @@ ML Opsidian: Local Competition Scorer
 ======================================
 Replicates the competition's scoring metric locally using OOF predictions.
 
-# REVERSE-ENGINEERED FORMULA (25 data points, refitted v2):
-#   LB = (0.563014 * MAE + 1.168097 * RMSE) * (1.0 + 0.141008 * (1 - EV)) - 0.041736
+# REVERSE-ENGINEERED FORMULA (28 data points, refitted):
+#   LB = (0.544177 * MAE + 1.148953 * RMSE) * (1.0 + 0.049625 * (1 - EV)) - 0.000580
 #
-# Validated against 25 known LB submissions:
-#   RMS Error = 0.00036
-#   Max Abs Error = 0.00097
+# Validated against 28 known LB submissions:
+#   MAE Error = 0.00030
+#   Max Abs Error = 0.00113
 
 USAGE:
   # Score a specific version's OOF predictions:
@@ -35,20 +35,20 @@ from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explai
 # THE REVERSE-ENGINEERED COMPETITION METRIC
 # ============================================================
 
-# Coefficients: fitted via least-squares on 24 known LB submissions
+# Coefficients: fitted via least-squares on 28 known LB submissions
 # Formula: LB = (c_mae * MAE + c_rmse * RMSE) * (1.0 + c_ev * (1.0 - EV)) + c_int
-_C_MAE  = 0.563014
-_C_RMSE = 1.168097
-_C_EV   = 0.141008
-_C_INT  = -0.041736
+_C_MAE  = 0.544177
+_C_RMSE = 1.148953
+_C_EV   = 0.049625
+_C_INT  = -0.000580
 
 def competition_score(mae, rmse, ev):
     """
     Compute estimated leaderboard score from MAE, RMSE, EV.
 
-    Refitted from 25 known LB submissions (v3 through v703_optimized).
-    Formula: LB = (0.563014*MAE + 1.168097*RMSE) * (1 + 0.141008*(1-EV)) - 0.041736
-    RMS Error on 25 points: 0.00036 | Max Abs Error: 0.00097
+    Refitted from 28 known LB submissions.
+    Formula: LB = (0.544177*MAE + 1.148953*RMSE) * (1 + 0.049625*(1-EV)) - 0.000580
+    Mean Abs Error: 0.00030 | Max Abs Error: 0.00113
     """
     return (_C_MAE * mae + _C_RMSE * rmse) * (1.0 + _C_EV * (1.0 - ev)) + _C_INT
 
@@ -90,7 +90,7 @@ def print_evaluation(result, verbose=True):
     print(f"  Explained Var. : {result['EV']:.5f}")
     print(f"  ---")
     print(f"  Est. LB Score  : {result['est_LB']:.5f}")
-    print(f"  Simulator Err  : ±0.00036 RMS, ±0.00097 max (25 calibration pts)")
+    print(f"  Simulator Err  : ±0.00030 MAE, ±0.00113 max (28 calibration pts)")
     print(f"{'=' * 60}")
     
     if verbose:
@@ -113,31 +113,34 @@ def print_evaluation(result, verbose=True):
         print(f"\n  [COMPARISON TO KNOWN LB SCORES]")
         known = [
             ("Rank 1 target",    0.38037),
-            ("v67_optimized",    0.38216),
-            ("v70_optimized",    0.38216),
-            ("v703_optimized",   0.38203),
-            ("v80_optimized",    0.38240),
-            ("v77_optimized",    0.38253),
-            ("v42_optimized",    0.38245),
-            ("v64_optimized",    0.38256),
-            ("v45_optimized",    0.38272),
-            ("v44_optimized",    0.38278),
+            ("v10",              0.38598),
+            ("v1000_optimized",  0.38242),
+            ("v10_probe_k3.5",   0.41264),
+            ("v1200_optimized",  0.38276),
+            ("v13",              0.38476),
+            ("v17",              0.38506),
+            ("v19",              0.38401),
+            ("v20",              0.38331),
+            ("v23",              0.38411),
+            ("v28_kaggle",       0.38499),
             ("v30",              0.38293),
             ("v33",              0.38294),
-            ("v60_optimized",    0.38295),
-            ("v38_optimized",    0.38298),
-            ("v63_optimized",    0.38309),
-            ("v37_optimized",    0.38328),
-            ("v20",              0.38331),
             ("v37",              0.38335),
+            ("v37_optimized",    0.38328),
+            ("v38_optimized",    0.38298),
+            ("v42_optimized",    0.38245),
+            ("v44_optimized",    0.38278),
+            ("v45_optimized",    0.38272),
             ("v54_optimized",    0.38337),
-            ("v19",              0.38401),
-            ("v23 (overfit)",    0.38411),
-            ("v13",              0.38476),
-            ("v28_kaggle",       0.38499),
-            ("v17",              0.38506),
-            ("v3",               0.38559),
-            ("v11",              0.38637),
+            ("v60_optimized",    0.38295),
+            ("v63_optimized",    0.38309),
+            ("v64_optimized",    0.38256),
+            ("v67_optimized",    0.38216),
+            ("v702_optimized",   0.38246),
+            ("v703_optimized",   0.38203),
+            ("v70_optimized",    0.38216),
+            ("v77_optimized",    0.38253),
+            ("v80_optimized",    0.38240)
         ]
         for name, lb_actual in known:
             delta = result['est_LB'] - lb_actual
@@ -259,18 +262,14 @@ if __name__ == "__main__":
             print("=" * 80)
             
             known_lb = {
-                "v3": 0.38559, "v10": 0.38598, "v11": 0.38637,
-                "v10_probe_k3.5": 0.41264,
-                "v13": 0.38476, "v17": 0.38506, "v19": 0.38401,
+                "v10": 0.38598, "v1000_optimized": 0.38242, "v10_probe_k3.5": 0.41264,
+                "v1200_optimized": 0.38276, "v13": 0.38476, "v17": 0.38506, "v19": 0.38401,
                 "v20": 0.38331, "v23": 0.38411, "v28_kaggle": 0.38499,
-                "v30": 0.38293, "v33": 0.38294,
-                "v37": 0.38335, "v37_optimized": 0.38328,
-                "v38_optimized": 0.38298, "v42_optimized": 0.38245,
-                "v44_optimized": 0.38278, "v45_optimized": 0.38272,
-                "v54_optimized": 0.38337, "v60_optimized": 0.38295,
-                "v63_optimized": 0.38309, "v64_optimized": 0.38256,
-                "v67_optimized": 0.38216, "v70_optimized": 0.38216,
-                "v703_optimized": 0.38203,
+                "v30": 0.38293, "v33": 0.38294, "v37": 0.38335, "v37_optimized": 0.38328,
+                "v38_optimized": 0.38298, "v42_optimized": 0.38245, "v44_optimized": 0.38278,
+                "v45_optimized": 0.38272, "v54_optimized": 0.38337, "v60_optimized": 0.38295,
+                "v63_optimized": 0.38309, "v64_optimized": 0.38256, "v67_optimized": 0.38216,
+                "v702_optimized": 0.38246, "v703_optimized": 0.38203, "v70_optimized": 0.38216,
                 "v77_optimized": 0.38253, "v80_optimized": 0.38240,
             }
 
@@ -306,9 +305,10 @@ if __name__ == "__main__":
         print("\nKnown submissions and estimated scores:")
         
         known = [
-            ("v3",              0.17967, 0.23525, 0.02847, 0.38559),
+            ("v10",             0.17971, 0.23526, 0.02845, 0.38598),
+            ("v1000_optimized", 0.17783, 0.23380, 0.04051, 0.38242),
             ("v10_probe_k3.5",  0.19298, 0.24980,-0.09534, 0.41264),
-            ("v11",             0.17984, 0.23539, 0.02737, 0.38637),
+            ("v1200_optimized", 0.17833, 0.23421, 0.03715, 0.38276),
             ("v13",             0.17937, 0.23500, 0.03060, 0.38476),
             ("v17",             0.17882, 0.23465, 0.03390, 0.38506),
             ("v19",             0.17891, 0.23461, 0.03379, 0.38401),
@@ -320,20 +320,19 @@ if __name__ == "__main__":
             ("v37",             0.17853, 0.23439, 0.03566, 0.38335),
             ("v37_optimized",   0.17851, 0.23436, 0.03589, 0.38328),
             ("v38_optimized",   0.17853, 0.23438, 0.03571, 0.38298),
-            ("v42_optimized",   0.17811, 0.23401, 0.03873, 0.38245),
-            ("v44",             0.17808, 0.23400, 0.03892, None),
-            ("v44_optimized",   0.17806, 0.23399, 0.03892, 0.38278),
-            ("v45",             0.17814, 0.23403, 0.03863, None),
+            ("v42_optimized",   0.17811, 0.23402, 0.03873, 0.38245),
+            ("v44_optimized",   0.17806, 0.23400, 0.03892, 0.38278),
             ("v45_optimized",   0.17811, 0.23402, 0.03869, 0.38272),
-            ("v54_optimized",   0.17819, 0.23420, 0.03751, 0.38337),
-            ("v60_optimized",   0.17827, 0.23412, 0.03782, 0.38295),
+            ("v54_optimized",   0.17820, 0.23420, 0.03751, 0.38337),
+            ("v60_optimized",   0.17827, 0.23413, 0.03782, 0.38295),
             ("v63_optimized",   0.17822, 0.23408, 0.03822, 0.38309),
             ("v64_optimized",   0.17803, 0.23393, 0.03942, 0.38256),
             ("v67_optimized",   0.17803, 0.23396, 0.03919, 0.38216),
+            ("v702_optimized",  0.17815, 0.23403, 0.03862, 0.38246),
+            ("v703_optimized",  0.17807, 0.23399, 0.03894, 0.38203),
             ("v70_optimized",   0.17803, 0.23395, 0.03923, 0.38216),
             ("v77_optimized",   0.17806, 0.23396, 0.03914, 0.38253),
-            ("v80_optimized",   0.17806, 0.23396, 0.03915, 0.38240),
-            ("v703_optimized",  0.17807, 0.23399, 0.03894, 0.38203),
+            ("v80_optimized",   0.17806, 0.23396, 0.03916, 0.38240),
         ]
 
         
