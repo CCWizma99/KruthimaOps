@@ -59,8 +59,8 @@ if __name__ == "__main__":
     
     # a: multiplier [0.5, 1.5]
     # b: exponent [0.5, 2.0]
-    # c: offset [-0.15, 0.15]
-    bounds = [(0.5, 1.5), (0.5, 2.0), (-0.15, 0.15)]
+    # c: offset [-0.25, 0.25]
+    bounds = [(0.5, 1.5), (0.5, 2.0), (-0.25, 0.25)]
     
     print("\nRunning L-BFGS-B optimization with bounds...")
     res = minimize(

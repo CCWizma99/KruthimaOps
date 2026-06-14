@@ -11,6 +11,9 @@ y_true = train_df['flood_risk_score'].values
 
 # 2. Known LB mapping
 known_lb = {
+    "v703_hub_oof_te_optimized": 0.38232,
+    "v703_7m_optimized": 0.38236,
+    "v703_hub_optimized": 0.38235,
     "v702_optimized": 0.38246,
     "combined": 0.51454,
     "v778": 0.38488,
@@ -55,7 +58,10 @@ data = []
 oof_files = glob.glob("submissions/oof_*.npy")
 for path in oof_files:
     basename = os.path.basename(path)
-    ver = basename.replace("oof_", "").replace(".npy", "")
+    if basename.startswith("oof_"):
+        ver = basename[4:-4]
+    else:
+        ver = basename.replace(".npy", "")
     
     if ver in known_lb:
         y_pred = np.load(path)

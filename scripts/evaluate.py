@@ -3,12 +3,12 @@ ML Opsidian: Local Competition Scorer
 ======================================
 Replicates the competition's scoring metric locally using OOF predictions.
 
-# REVERSE-ENGINEERED FORMULA (28 data points, refitted):
-#   LB = (0.544177 * MAE + 1.148953 * RMSE) * (1.0 + 0.049625 * (1 - EV)) - 0.000580
+# REVERSE-ENGINEERED FORMULA (31 data points, refitted):
+#   LB = (0.543990 * MAE + 1.148842 * RMSE) * (1.0 + 0.049105 * (1 - EV)) - 0.000309
 #
-# Validated against 28 known LB submissions:
-#   MAE Error = 0.00030
-#   Max Abs Error = 0.00113
+# Validated against 31 known LB submissions:
+#   MAE Error = 0.00029
+#   Max Abs Error = 0.00111
 
 USAGE:
   # Score a specific version's OOF predictions:
@@ -35,20 +35,20 @@ from sklearn.metrics import mean_absolute_error, root_mean_squared_error, explai
 # THE REVERSE-ENGINEERED COMPETITION METRIC
 # ============================================================
 
-# Coefficients: fitted via least-squares on 28 known LB submissions
+# Coefficients: fitted via least-squares on 31 known LB submissions
 # Formula: LB = (c_mae * MAE + c_rmse * RMSE) * (1.0 + c_ev * (1.0 - EV)) + c_int
-_C_MAE  = 0.544177
-_C_RMSE = 1.148953
-_C_EV   = 0.049625
-_C_INT  = -0.000580
+_C_MAE  = 0.543990
+_C_RMSE = 1.148842
+_C_EV   = 0.049105
+_C_INT  = -0.000309
 
 def competition_score(mae, rmse, ev):
     """
     Compute estimated leaderboard score from MAE, RMSE, EV.
 
-    Refitted from 28 known LB submissions.
-    Formula: LB = (0.544177*MAE + 1.148953*RMSE) * (1 + 0.049625*(1-EV)) - 0.000580
-    Mean Abs Error: 0.00030 | Max Abs Error: 0.00113
+    Refitted from 31 known LB submissions.
+    Formula: LB = (0.543990*MAE + 1.148842*RMSE) * (1 + 0.049105*(1-EV)) - 0.000309
+    Mean Abs Error: 0.00029 | Max Abs Error: 0.00111
     """
     return (_C_MAE * mae + _C_RMSE * rmse) * (1.0 + _C_EV * (1.0 - ev)) + _C_INT
 
@@ -90,7 +90,7 @@ def print_evaluation(result, verbose=True):
     print(f"  Explained Var. : {result['EV']:.5f}")
     print(f"  ---")
     print(f"  Est. LB Score  : {result['est_LB']:.5f}")
-    print(f"  Simulator Err  : ±0.00030 MAE, ±0.00113 max (28 calibration pts)")
+    print(f"  Simulator Err  : ±0.00029 MAE, ±0.00111 max (31 calibration pts)")
     print(f"{'=' * 60}")
     
     if verbose:
@@ -137,6 +137,9 @@ def print_evaluation(result, verbose=True):
             ("v64_optimized",    0.38256),
             ("v67_optimized",    0.38216),
             ("v702_optimized",   0.38246),
+            ("v703_7m_optimized", 0.38236),
+            ("v703_hub_oof_te_optimized", 0.38232),
+            ("v703_hub_optimized", 0.38235),
             ("v703_optimized",   0.38203),
             ("v70_optimized",    0.38216),
             ("v77_optimized",    0.38253),
@@ -189,7 +192,10 @@ def scan_all_versions():
     versions = []
     for f in files:
         basename = os.path.basename(f)
-        ver = basename.replace("oof_", "").replace(".npy", "")
+        if basename.startswith("oof_"):
+            ver = basename[4:-4]
+        else:
+            ver = basename.replace(".npy", "")
         versions.append((ver, f))
     return sorted(versions)
 
@@ -271,6 +277,7 @@ if __name__ == "__main__":
                 "v63_optimized": 0.38309, "v64_optimized": 0.38256, "v67_optimized": 0.38216,
                 "v702_optimized": 0.38246, "v703_optimized": 0.38203, "v70_optimized": 0.38216,
                 "v77_optimized": 0.38253, "v80_optimized": 0.38240,
+                "v703_7m_optimized": 0.38236, "v703_hub_oof_te_optimized": 0.38232, "v703_hub_optimized": 0.38235,
             }
 
             
@@ -329,6 +336,9 @@ if __name__ == "__main__":
             ("v64_optimized",   0.17803, 0.23393, 0.03942, 0.38256),
             ("v67_optimized",   0.17803, 0.23396, 0.03919, 0.38216),
             ("v702_optimized",  0.17815, 0.23403, 0.03862, 0.38246),
+            ("v703_7m_optimized", 0.17779, 0.23376, 0.04082, 0.38236),
+            ("v703_hub_oof_te_optimized", 0.17772, 0.23370, 0.04128, 0.38232),
+            ("v703_hub_optimized", 0.17780, 0.23377, 0.04073, 0.38235),
             ("v703_optimized",  0.17807, 0.23399, 0.03894, 0.38203),
             ("v70_optimized",   0.17803, 0.23395, 0.03923, 0.38216),
             ("v77_optimized",   0.17806, 0.23396, 0.03914, 0.38253),
