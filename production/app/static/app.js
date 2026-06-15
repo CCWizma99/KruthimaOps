@@ -187,7 +187,7 @@ function getInterpolatedColor(score, alpha) {
   };
 }
 
-/** Plot dynamic 3D risk surface using Inverse Distance Weighting (IDW) */
+/** Plot district pins on the map without the 3D surface mesh */
 function update3DRiskSurface(dayIdx = 0) {
   if (!state.viewer) return;
 
@@ -204,158 +204,7 @@ function update3DRiskSurface(dayIdx = 0) {
   const calculatedDistricts = Object.keys(state.districts).filter(name => state.districtForecasts[name]);
   if (calculatedDistricts.length === 0) return;
 
-  // 2. Define grid parameters over Sri Lanka bounding box
-  const Nx = 35;
-  const Ny = 50;
-  const minLon = 79.5;
-  const maxLon = 82.2;
-  const minLat = 5.8;
-  const maxLat = 9.9;
-
-  const positions = [];
-  const colors = [];
-  const lineColors = [];
-  const fades = [];
-
-  for (let j = 0; j < Ny; j++) {
-    const lat = minLat + (j / (Ny - 1)) * (maxLat - minLat);
-    for (let i = 0; i < Nx; i++) {
-      const lon = minLon + (i / (Nx - 1)) * (maxLon - minLon);
-
-      let sumWeight = 0;
-      let sumScore = 0;
-      let minD = 999;
-
-      for (const name of calculatedDistricts) {
-        const ref = state.districts[name];
-        const forecastList = state.districtForecasts[name];
-        if (!ref || !forecastList) continue;
-
-        const dayData = forecastList[dayIdx] || forecastList[0];
-        const score = dayData ? dayData.risk_score : 0;
-
-        const dLon = lon - ref.center_lon;
-        const dLat = lat - ref.center_lat;
-        const d = Math.sqrt(dLon * dLon + dLat * dLat);
-
-        if (d < minD) minD = d;
-
-        const weight = 1.0 / (d * d + 0.0001);
-        sumWeight += weight;
-        sumScore += weight * score;
-      }
-
-      const score = sumWeight > 0 ? (sumScore / sumWeight) : 0;
-
-      // Coastline falloff filter: tight boundary conforming to Sri Lanka's geography
-      const maxDist = 0.44;
-      const minDistLimit = 0.12;
-      const fade = Math.max(0, Math.min(1, (maxDist - minD) / (maxDist - minDistLimit)));
-      const height = score * fade * 85000; // 85 km max height at center peak
-
-      const c = getInterpolatedColor(score, fade * 0.58);
-      const lc = getInterpolatedColor(score, fade * 0.82);
-
-      const pos = Cesium.Cartesian3.fromDegrees(lon, lat, height);
-      positions.push(pos.x, pos.y, pos.z);
-      colors.push(c.red, c.green, c.blue, c.alpha);
-      lineColors.push(lc.red, lc.green, lc.blue, lc.alpha);
-      fades.push(fade);
-    }
-  }
-
-  // 3. Grid triangulation indices (ONLY for land triangles where all 3 vertices have fade > 0)
-  const indices = [];
-  for (let j = 0; j < Ny - 1; j++) {
-    for (let i = 0; i < Nx - 1; i++) {
-      const bl = j * Nx + i;
-      const br = j * Nx + (i + 1);
-      const tl = (j + 1) * Nx + i;
-      const tr = (j + 1) * Nx + (i + 1);
-
-      if (fades[bl] > 0 && fades[br] > 0 && fades[tr] > 0) {
-        indices.push(bl, br, tr);
-      }
-      if (fades[bl] > 0 && fades[tr] > 0 && fades[tl] > 0) {
-        indices.push(bl, tr, tl);
-      }
-    }
-  }
-
-  // 4. Grid wireframe line indices (ONLY for land lines where both endpoints have fade > 0)
-  const lineIndices = [];
-  for (let j = 0; j < Ny; j++) {
-    for (let i = 0; i < Nx; i++) {
-      const idx = j * Nx + i;
-      if (i < Nx - 1) {
-        const br = j * Nx + (i + 1);
-        if (fades[idx] > 0 && fades[br] > 0) {
-          lineIndices.push(idx, br);
-        }
-      }
-      if (j < Ny - 1) {
-        const tl = (j + 1) * Nx + i;
-        if (fades[idx] > 0 && fades[tl] > 0) {
-          lineIndices.push(idx, tl);
-        }
-      }
-    }
-  }
-
-  // 5. Build Cesium primitives
-  const meshGeometry = new Cesium.Geometry({
-    attributes: {
-      position: new Cesium.GeometryAttribute({
-        componentDatatype: Cesium.ComponentDatatype.DOUBLE,
-        componentsPerAttribute: 3,
-        values: new Float64Array(positions)
-      }),
-      color: new Cesium.GeometryAttribute({
-        componentDatatype: Cesium.ComponentDatatype.UNSIGNED_BYTE,
-        componentsPerAttribute: 4,
-        normalize: true,
-        values: new Uint8Array(colors)
-      })
-    },
-    indices: new Uint16Array(indices),
-    primitiveType: Cesium.PrimitiveType.TRIANGLES,
-    boundingSphere: Cesium.BoundingSphere.fromVertices(positions)
-  });
-
-  state.meshPrimitive = new Cesium.Primitive({
-    geometryInstances: new Cesium.GeometryInstance({ geometry: meshGeometry }),
-    appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
-    asynchronous: false
-  });
-  state.viewer.scene.primitives.add(state.meshPrimitive);
-
-  const lineGeometry = new Cesium.Geometry({
-    attributes: {
-      position: new Cesium.GeometryAttribute({
-        componentDatatype: Cesium.ComponentDatatype.DOUBLE,
-        componentsPerAttribute: 3,
-        values: new Float64Array(positions)
-      }),
-      color: new Cesium.GeometryAttribute({
-        componentDatatype: Cesium.ComponentDatatype.UNSIGNED_BYTE,
-        componentsPerAttribute: 4,
-        normalize: true,
-        values: new Uint8Array(lineColors)
-      })
-    },
-    indices: new Uint16Array(lineIndices),
-    primitiveType: Cesium.PrimitiveType.LINES,
-    boundingSphere: Cesium.BoundingSphere.fromVertices(positions)
-  });
-
-  state.wireframePrimitive = new Cesium.Primitive({
-    geometryInstances: new Cesium.GeometryInstance({ geometry: lineGeometry }),
-    appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
-    asynchronous: false
-  });
-  state.viewer.scene.primitives.add(state.wireframePrimitive);
-
-  // 6. Update all computed district pin flags to float exactly above the 3D surface
+  // 2. Update all computed district pin flags to float near the surface
   for (const name of calculatedDistricts) {
     const ref = state.districts[name];
     const forecastList = state.districtForecasts[name];
@@ -364,31 +213,8 @@ function update3DRiskSurface(dayIdx = 0) {
     const dayData = forecastList[dayIdx] || forecastList[0];
     const score = dayData ? dayData.risk_score : 0;
 
-    let sumWeight = 0;
-    let sumScore = 0;
-    let minD = 999;
-    for (const otherName of calculatedDistricts) {
-      const otherRef = state.districts[otherName];
-      const otherList = state.districtForecasts[otherName];
-      if (!otherRef || !otherList) continue;
-
-      const otherDayData = otherList[dayIdx] || otherList[0];
-      const otherScore = otherDayData ? otherDayData.risk_score : 0;
-
-      const dLon = ref.center_lon - otherRef.center_lon;
-      const dLat = ref.center_lat - otherRef.center_lat;
-      const d = Math.sqrt(dLon * dLon + dLat * dLat);
-
-      if (d < minD) minD = d;
-
-      const weight = 1.0 / (d * d + 0.0001);
-      sumWeight += weight;
-      sumScore += weight * otherScore;
-    }
-
-    const localScore = sumWeight > 0 ? (sumScore / sumWeight) : score;
-    const fade = Math.max(0, 1.0 - (minD / 0.65));
-    const localHeight = localScore * fade * 85000;
+    // Minimal stem height so the pin is visible above terrain
+    const localHeight = 2000;
 
     plotDistrictPin(ref.center_lat, ref.center_lon, name, localHeight, score);
   }
