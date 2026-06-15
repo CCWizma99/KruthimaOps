@@ -75,6 +75,7 @@ function initCesium() {
   try {
     const opts = {
       baseLayerPicker:      false,
+      baseLayer:            false,
       navigationHelpButton: false,
       sceneModePicker:      false,
       homeButton:           false,
@@ -86,10 +87,6 @@ function initCesium() {
       selectionIndicator:   false,
       skyBox:               false,
       skyAtmosphere:        new Cesium.SkyAtmosphere(),
-      imageryProvider:      new Cesium.UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        credit: 'Map tiles by Carto, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
-      }),
     };
 
     if (Cesium.Ion.defaultAccessToken) {
@@ -97,6 +94,11 @@ function initCesium() {
     }
 
     state.viewer = new Cesium.Viewer('cesium-container', opts);
+
+    state.viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        credit: 'Map tiles by Carto, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
+    }));
 
     // Show the globe for CartoDB map, but hide sun/moon/atmosphere for clean UI
     state.viewer.scene.globe.show = true;
