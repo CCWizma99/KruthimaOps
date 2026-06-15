@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  floodguard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - CESIUM_ION_TOKEN=${CESIUM_ION_TOKEN:-}
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./monitoring.db:/app/monitoring.db
+    restart: unless-stopped

@@ -11,3 +11,7 @@ catboost_info/
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Environment variables
+.env
+monitoring.db
