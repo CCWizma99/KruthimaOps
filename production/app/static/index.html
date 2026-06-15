@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FloodGuard SL — Flood Risk Command Dashboard</title>
+  <meta name="description" content="Real-time AI-powered flood risk simulation and command dashboard for Sri Lanka. Powered by the v703 ensemble ML model." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <!-- CesiumJS 1.122 -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════ HEADER ══ -->
+<header class="app-header">
+  <div class="header-brand">
+    <div class="brand-icon">🌊</div>
+    <div class="brand-text">
+      <span class="brand-name">FloodGuard SL</span>
+      <span class="brand-sub">Flood Risk Command Dashboard</span>
+    </div>
+  </div>
+
+  <!-- Precompute Progress (center header) -->
+  <div class="header-precompute" id="header-precompute" style="display:none">
+    <div class="precompute-track">
+      <div class="precompute-fill" id="precompute-fill"></div>
+    </div>
+    <span class="precompute-label" id="precompute-label">Computing district risk profiles…</span>
+  </div>
+
+  <div class="header-status">
+    <div class="status-chip" id="model-chip">
+      <span class="status-dot"></span>
+      <span id="model-version-label">Loading model...</span>
+    </div>
+    <div class="status-chip live-chip">
+      <span class="pulse-dot"></span>
+      <span>LIVE</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════ MAIN LAYOUT ══ -->
+<main class="dashboard-grid">
+
+  <!-- ══════════════════════════════ LEFT — SLIM CONTROLS ══ -->
+  <aside class="control-panel" id="control-panel">
+
+    <div class="panel-section">
+      <label class="field-label">📍 District</label>
+      <div class="select-wrapper">
+        <select id="district-select" class="styled-select">
+          <option value="">Select district...</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <button class="simulate-btn" id="simulate-btn" onclick="openWhatIfModal()" disabled>
+      ⚡ Simulate Scenario
+    </button>
+
+    <div class="divider"></div>
+
+    <!-- Historical Simulation / Time Travel -->
+    <div class="panel-section">
+      <label class="field-label">🕰️ Time Travel</label>
+      <p class="field-hint">Pick a past date to backtest predictions using actual historical weather data.</p>
+      <input type="date" id="historical-date" class="styled-date-input" />
+      <button class="historical-btn" id="historical-btn" onclick="runHistoricalSimulation()">
+        <span id="hist-btn-text">⏪ Run Historical</span>
+        <div class="btn-loader" id="hist-btn-loader" style="display:none"></div>
+      </button>
+    </div>
+
+    <!-- Historical mode active banner -->
+    <div class="historical-active-banner" id="historical-active-banner" style="display:none">
+      <div class="hist-banner-info">
+        <span class="hist-banner-icon">🕰️</span>
+        <div class="hist-banner-text">
+          <span class="hist-banner-title" id="hist-banner-title">Historical Mode</span>
+          <span class="hist-banner-date" id="hist-banner-date">—</span>
+        </div>
+      </div>
+      <button class="hist-return-btn" onclick="returnToLive()">↩ Return to Live</button>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Compact model registry -->
+    <div class="model-mini-card">
+      <div class="model-mini-header">📊 Model Registry</div>
+      <div class="model-stat-row">
+        <span class="stat-label">Pipeline</span>
+        <span class="stat-value" id="stat-pipeline">—</span>
+      </div>
+      <div class="model-stat-row">
+        <span class="stat-label">OOF MAE</span>
+        <span class="stat-value" id="stat-mae">—</span>
+      </div>
+      <div class="model-stat-row">
+        <span class="stat-label">OOF EV</span>
+        <span class="stat-value" id="stat-ev">—</span>
+      </div>
+      <div class="model-stat-row">
+        <span class="stat-label">Est. LB</span>
+        <span class="stat-value" id="stat-lb">—</span>
+      </div>
+      <div class="model-stat-row">
+        <span class="stat-label">Features</span>
+        <span class="stat-value" id="stat-feats">—</span>
+      </div>
+      <div class="model-stat-row">
+        <span class="stat-label">Trained</span>
+        <span class="stat-value" id="stat-date">—</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Batch Upload -->
+    <div class="panel-section">
+      <label class="field-label">📤 Batch Upload</label>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('csv-input').click()">
+        <span>Drop CSV or click to upload</span>
+        <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="handleBatchUpload(event)" />
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ══════════════════════════════════════════ CENTER MAP ══ -->
+  <section class="map-section">
+    <div id="cesium-container"></div>
+
+    <!-- Top-left legend -->
+    <div class="map-overlay-top">
+      <div class="legend">
+        <span class="legend-label">Risk Level</span>
+        <div class="legend-scale">
+          <span class="legend-low">LOW</span>
+          <div class="legend-gradient"></div>
+          <span class="legend-extreme">EXTREME</span>
+        </div>
+      </div>
+      <div class="district-count-chip" id="district-count-chip" style="display:none">
+        <span class="pulse-dot" style="background:#22d3ee"></span>
+        <span id="districts-ready-count">0</span>/25 risk profiles loaded
+      </div>
+    </div>
+
+    <!-- District fly-to label -->
+    <div class="map-overlay-bottom" id="district-label-overlay" style="display:none">
+      <span id="district-flyto-label"></span>
+    </div>
+
+    <!-- Click hint -->
+    <div class="map-click-hint" id="map-click-hint">
+      Click a district tower to view its forecast
+    </div>
+  </section>
+
+</main>
+
+<!-- ══════════════════════════════════════ ACTIVITY LOG ══ -->
+<section class="activity-log" id="activity-log">
+  <div class="log-header">
+    <span>📋 Activity Log</span>
+    <button class="export-btn" onclick="exportLog()">Export CSV ↓</button>
+  </div>
+  <div class="log-table-wrapper">
+    <table class="log-table" id="log-table">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>District</th>
+          <th>Rainfall (mm)</th>
+          <th>Risk Score</th>
+          <th>Risk Level</th>
+          <th>Latency (ms)</th>
+          <th>Warnings</th>
+        </tr>
+      </thead>
+      <tbody id="log-body">
+        <tr><td colspan="7" class="log-empty">No predictions yet. Run a simulation to get started.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════════════ DISTRICT DETAIL MODAL (bottom slide-up) ══ -->
+<div class="district-modal" id="district-modal">
+  <!-- Drag handle -->
+  <div class="district-modal-handle" onclick="closeDistrictModal()">
+    <div class="drag-bar"></div>
+  </div>
+
+  <!-- Modal header -->
+  <div class="district-modal-header">
+    <div class="district-modal-title-group">
+      <span class="district-modal-name" id="modal-district-name">Select a District</span>
+      <span class="district-modal-sub" id="modal-district-sub">Click on the map or select from the dropdown</span>
+    </div>
+    <div class="district-modal-actions">
+      <button class="modal-simulate-btn" id="modal-simulate-btn" onclick="openWhatIfModal()">⚡ Simulate</button>
+      <button class="modal-close-btn" onclick="closeDistrictModal()">✕</button>
+    </div>
+  </div>
+
+  <!-- Modal body: 3-column layout -->
+  <div class="district-modal-body">
+
+    <!-- LEFT: Risk gauge -->
+    <div class="modal-gauge-col">
+      <div class="modal-gauge-wrap">
+        <svg class="modal-gauge-svg" viewBox="0 0 200 120">
+          <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1e2a3a" stroke-width="18" stroke-linecap="round"/>
+          <path id="modal-gauge-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#22d3ee" stroke-width="18" stroke-linecap="round" stroke-dasharray="251" stroke-dashoffset="251"/>
+          <circle id="modal-gauge-needle" cx="20" cy="100" r="5" fill="white"/>
+        </svg>
+        <div class="modal-gauge-center">
+          <span class="modal-gauge-score" id="modal-gauge-score">—</span>
+          <span class="modal-gauge-label" id="modal-gauge-label">NO DATA</span>
+        </div>
+      </div>
+      <div class="risk-badge modal-risk-badge" id="modal-risk-badge">AWAITING</div>
+    </div>
+
+    <!-- CENTER: 7-day forecast list -->
+    <div class="modal-forecast-col">
+      <div class="modal-section-label">📅 7-Day Risk Forecast</div>
+      <div class="modal-forecast-list" id="modal-forecast-body">
+        <div class="modal-forecast-placeholder">Select a district to view its 7-day outlook.</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: AI briefing + feedback -->
+    <div class="modal-briefing-col">
+      <div class="modal-section-label">🤖 AI Safety Briefing</div>
+      <div class="modal-briefing-text" id="modal-briefing-text">
+        Run a prediction or select a forecast day to receive an AI-generated safety advisory.
+      </div>
+      <div class="modal-warnings" id="modal-warnings" style="display:none"></div>
+      <div class="modal-feedback-row" id="modal-feedback-row" style="display:none">
+        <span class="feedback-label">Was this accurate?</span>
+        <button class="feedback-btn positive" id="btn-thumbup" onclick="submitFeedback('accurate')">👍</button>
+        <button class="feedback-btn negative" id="btn-thumbdown" onclick="submitFeedback('inaccurate')">👎</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════ WHAT-IF SIMULATION MODAL ══ -->
+<div class="whatif-overlay" id="whatif-overlay" onclick="closeWhatIfModal()"></div>
+<div class="whatif-modal" id="whatif-modal">
+
+  <div class="whatif-modal-header">
+    <div class="whatif-title-group">
+      <span class="whatif-title">⚡ Scenario Simulator</span>
+      <span class="whatif-district-chip" id="whatif-district-chip">No district selected</span>
+    </div>
+    <button class="modal-close-btn" onclick="closeWhatIfModal()">✕</button>
+  </div>
+
+  <div class="whatif-modal-body">
+
+    <div class="slider-group">
+      <div class="slider-header">
+        <span>Rainfall (7-day)</span>
+        <span class="slider-value" id="rainfall-value">50 mm</span>
+      </div>
+      <input type="range" id="rainfall-slider" class="styled-slider" min="0" max="500" value="50" step="5" />
+      <div class="slider-ticks">
+        <span>0</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500mm</span>
+      </div>
+    </div>
+
+    <div class="slider-group">
+      <div class="slider-header">
+        <span>Inundation Area</span>
+        <span class="slider-value" id="inundation-value">0 sqm</span>
+      </div>
+      <input type="range" id="inundation-slider" class="styled-slider" min="0" max="50000" value="0" step="500" />
+      <div class="slider-ticks">
+        <span>0</span><span>10k</span><span>25k</span><span>50k sqm</span>
+      </div>
+    </div>
+
+    <div class="toggle-group">
+      <label class="field-label">Active Flooding</label>
+      <div class="toggle-row">
+        <button class="toggle-btn active" id="flood-no" data-field="flood_occurrence" data-value="No">No</button>
+        <button class="toggle-btn" id="flood-yes" data-field="flood_occurrence" data-value="Yes">Yes</button>
+      </div>
+    </div>
+
+    <div class="toggle-group">
+      <label class="field-label">Safe to Live</label>
+      <div class="toggle-row">
+        <button class="toggle-btn active" id="live-yes" data-field="is_good_to_live" data-value="Yes">Yes</button>
+        <button class="toggle-btn" id="live-no" data-field="is_good_to_live" data-value="No">No</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <label class="field-label">Reason (if unsafe)</label>
+      <select id="reason-select" class="styled-select">
+        <option value="None">None</option>
+        <option value="Flood Risk">Flood Risk</option>
+        <option value="Water Contamination">Water Contamination</option>
+        <option value="Infrastructure Damage">Infrastructure Damage</option>
+        <option value="Landslide Risk">Landslide Risk</option>
+      </select>
+    </div>
+
+  </div>
+
+  <div class="whatif-modal-footer">
+    <button class="predict-btn" id="predict-btn" onclick="runPrediction()">
+      <span id="btn-text">⚡ Analyse Risk</span>
+      <div class="btn-loader" id="btn-loader" style="display:none"></div>
+    </button>
+
+    <!-- Result panel — shown after analysis -->
+    <div class="whatif-result" id="whatif-result" style="display:none">
+      <div class="whatif-result-row">
+        <div class="whatif-mini-gauge">
+          <svg viewBox="0 0 200 120" style="width:100%;height:auto;">
+            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1e2a3a" stroke-width="18" stroke-linecap="round"/>
+            <path id="whatif-gauge-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#22d3ee" stroke-width="18" stroke-linecap="round" stroke-dasharray="251" stroke-dashoffset="251"/>
+            <circle id="whatif-gauge-needle" cx="20" cy="100" r="5" fill="white"/>
+          </svg>
+          <div class="whatif-gauge-center">
+            <span class="whatif-gauge-score" id="whatif-gauge-score">—</span>
+          </div>
+        </div>
+        <div class="whatif-result-meta">
+          <div class="risk-badge" id="whatif-risk-badge">—</div>
+          <div class="whatif-result-district" id="whatif-result-district">—</div>
+        </div>
+      </div>
+      <div class="whatif-briefing" id="whatif-briefing">—</div>
+      <div class="whatif-warnings-list" id="whatif-warnings" style="display:none"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/static/app.js?v=1.1.0"></script>
+</body>
+</html>

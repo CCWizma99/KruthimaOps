@@ -1,0 +1,25 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FloodGuard SL — Production Requirements
+# ─────────────────────────────────────────────────────────────────────────────
+# pip install -r requirements.txt
+
+# ── Core ML (must match training environment) ─────────────────────────────────
+pandas==3.0.3
+numpy==2.4.2
+scikit-learn==1.8.0
+xgboost==3.2.0
+lightgbm==4.6.0
+catboost==1.2.10
+scipy
+
+# ── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.136.3
+uvicorn[standard]==0.34.3
+python-multipart==0.0.20       # for CSV file uploads
+
+# ── AI Briefing ───────────────────────────────────────────────────────────────
+google-generativeai
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+pydantic>=2.0
+python-dotenv
