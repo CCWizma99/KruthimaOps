@@ -11,6 +11,7 @@
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
+  <link rel="manifest" href="/static/manifest.json" />
 </head>
 <body>
 
@@ -368,6 +369,17 @@
 
 </div>
 
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        console.log('[ServiceWorker] Registration successful with scope: ', reg.scope);
+      }).catch(err => {
+        console.warn('[ServiceWorker] Registration failed: ', err);
+      });
+    });
+  }
+</script>
 <script src="/static/app.js?v=1.1.0"></script>
 </body>
 </html>
