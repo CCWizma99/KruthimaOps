@@ -1,0 +1,8 @@
+id,type,label,x,y,lat,lng,description,status,created_at
+seed1,Safe Zone,A,100.0,430.0,7.2906,80.6337,Secure staging area with first aid,Accessible,2026-06-16T00:00:00Z
+seed2,Safe Zone,B,300.0,80.0,7.3104,80.6337,Primary evacuation shelter,Open,2026-06-16T00:00:00Z
+seed3,Safe Zone,C,450.0,100.0,7.3104,80.65,Secondary shelter,Ready,2026-06-16T00:00:00Z
+seed4,Safe Zone,D,300.0,340.0,7.295,80.6337,Campus rally point,Active,2026-06-16T00:00:00Z
+seed5,Evacuation Point,A,160.0,358.0,7.2935,80.637,Primary evacuation exit,Clear,2026-06-16T00:00:00Z
+seed6,Evacuation Point,B,300.0,200.0,7.303,80.6337,Secondary exit,Open,2026-06-16T00:00:00Z
+seed7,Evacuation Point,C,520.0,150.0,7.307,80.655,Tertiary exit,Open,2026-06-16T00:00:00Z0d82d8c5b6474787acd0692dceca5065,Safe Zone,AA,0.0,0.0,7.240978,79.999171,AAA,Open,2026-06-16T11:57:52.387071
