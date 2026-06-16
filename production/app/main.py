@@ -144,6 +144,14 @@ async def dashboard():
             return f.read()
     return HTMLResponse("<h1>FloodGuard SL API is running.</h1><p>Frontend not built yet.</p>")
 
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    sw_path = os.path.join(static_dir, "sw.js")
+    if os.path.exists(sw_path):
+        from fastapi.responses import FileResponse
+        return FileResponse(sw_path, media_type="application/javascript")
+    raise HTTPException(status_code=404)
+
 @app.get("/diagnostics", response_class=HTMLResponse, include_in_schema=False)
 async def diagnostics_page():
     page = os.path.join(static_dir, "diagnostics.html")
