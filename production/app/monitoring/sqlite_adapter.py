@@ -187,6 +187,21 @@ def get_recent_predictions(limit: int = 50) -> List[Dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def get_prediction_by_id(prediction_id: str) -> Optional[Dict[str, Any]]:
+    """Return a single logged prediction row for PDF report generation."""
+    with _conn() as c:
+        row = c.execute(
+            """SELECT prediction_id, timestamp, district, latitude, longitude,
+                      rainfall_7d, flood_occurrence, inundation_area,
+                      is_good_to_live, risk_score, risk_level, latency_ms,
+                      has_warnings, warning_text
+               FROM predictions
+               WHERE prediction_id = ?""",
+            (prediction_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def get_cached_forecast(district: str, forecast_date: str) -> Optional[Dict[str, Any]]:
     with _conn() as c:
         row = c.execute(
