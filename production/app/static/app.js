@@ -62,6 +62,61 @@ async function init() {
   await loadActivityLog();
   await loadEvacuationPoints();
   startPrecomputePolling();
+
+  // Show last refresh time (from SW cache or set to now)
+  updateLastRefreshTime();
+}
+
+/** Update the "Last Refreshed" chip in the header */
+function updateLastRefreshTime() {
+  const el = document.getElementById('last-refresh-label');
+  if (!el) return;
+
+  // Try to read the timestamp stored by the Service Worker
+  if ('caches' in window) {
+    caches.open('floodguard-cache-v4').then(cache => {
+      cache.match('/__last_refresh_time__').then(resp => {
+        if (resp) {
+          resp.text().then(ts => {
+            const d = new Date(ts);
+            if (!isNaN(d)) {
+              el.textContent = formatRefreshTime(d);
+              return;
+            }
+          });
+        }
+        // No cached timestamp — set to now (first load)
+        setRefreshTimeNow();
+      });
+    }).catch(() => setRefreshTimeNow());
+  } else {
+    setRefreshTimeNow();
+  }
+}
+
+function setRefreshTimeNow() {
+  const el = document.getElementById('last-refresh-label');
+  if (el) el.textContent = formatRefreshTime(new Date());
+  // Also store it
+  if ('caches' in window) {
+    caches.open('floodguard-cache-v4').then(cache => {
+      cache.put(
+        new Request('/__last_refresh_time__'),
+        new Response(new Date().toISOString())
+      );
+    }).catch(() => {});
+  }
+}
+
+function formatRefreshTime(d) {
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1)  return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24)  return `${diffHr}h ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function initHistoricalDatePicker() {
@@ -95,10 +150,6 @@ function initCesium() {
       selectionIndicator:   false,
       skyBox:               false,
       skyAtmosphere:        new Cesium.SkyAtmosphere(),
-      imageryProvider:      new Cesium.UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        credit: 'Map tiles by Carto, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
-      }),
     };
 
     if (Cesium.Ion.defaultAccessToken) {
@@ -107,8 +158,27 @@ function initCesium() {
 
     state.viewer = new Cesium.Viewer('cesium-container', opts);
 
-    // Show the globe for CartoDB map, but hide sun/moon/atmosphere for clean UI
+    // Replace default Cesium Ion base layer with CartoDB dark tiles
+    // Uses the modern ImageryLayer constructor (addImageryProvider is deprecated)
+    try {
+      const cartoProvider = new Cesium.UrlTemplateImageryProvider({
+        url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        minimumLevel: 0,
+        maximumLevel: 18,
+        credit: 'Map tiles by Carto, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
+      });
+      const cartoLayer = new Cesium.ImageryLayer(cartoProvider);
+      // Remove default Ion imagery first, then add dark CartoDB
+      state.viewer.imageryLayers.removeAll();
+      state.viewer.imageryLayers.add(cartoLayer);
+      console.log('[CesiumJS] CartoDB dark base layer added successfully.');
+    } catch (e) {
+      console.warn('[CesiumJS] CartoDB tiles failed, keeping default imagery:', e);
+    }
+
+    // Show the globe, hide sun/moon/atmosphere for clean dark UI
     state.viewer.scene.globe.show = true;
+    state.viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a1628');
     if (state.viewer.scene.sun) state.viewer.scene.sun.show = false;
     if (state.viewer.scene.moon) state.viewer.scene.moon.show = false;
     if (state.viewer.scene.skyAtmosphere) state.viewer.scene.skyAtmosphere.show = false;

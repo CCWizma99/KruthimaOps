@@ -38,6 +38,10 @@
       <span class="status-dot"></span>
       <span id="model-version-label">Loading model...</span>
     </div>
+    <div class="status-chip refresh-chip" id="refresh-chip" title="Last time data was synced from the server">
+      <span class="refresh-icon">🔄</span>
+      <span id="last-refresh-label">—</span>
+    </div>
     <div class="status-chip live-chip">
       <span class="pulse-dot"></span>
       <span>LIVE</span>
@@ -382,12 +386,14 @@
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js').then(reg => {
         console.log('[ServiceWorker] Registration successful with scope: ', reg.scope);
+        // Force the new SW to take over immediately
+        reg.update();
       }).catch(err => {
         console.warn('[ServiceWorker] Registration failed: ', err);
       });
     });
   }
 </script>
-<script src="/static/app.js?v=1.1.0"></script>
+<script src="/static/app.js?v=1.2.0"></script>
 </body>
 </html>
