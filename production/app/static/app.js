@@ -34,6 +34,11 @@ const state = {
   evacuationEntities:  [],          // List of Cesium Entities for safe zones
   evacuationData:      [],          // JSON data from evacuation_points.json
   showEvacuationPoints: false,      // UI toggle state
+  // Geolocation
+  myLocationActive:    false,
+  myLocationEntity:    null,        // Cesium entity for user's location pin
+  myLocationRingEntity: null,       // Cesium entity for pulsing accuracy ring
+  geoWatchId:          null,        // navigator.geolocation watchPosition ID
 };
 
 // ══════════════════════════════════════════════════════════ INIT ══
@@ -1316,6 +1321,136 @@ function toggleEvacuationPoints(show) {
       }
     });
     state.evacuationEntities.push(entity);
+  });
+}
+
+// ════════════════════════════════════════════════════ MY LOCATION ══
+
+function toggleMyLocation() {
+  const btn = document.getElementById('my-location-btn');
+
+  if (state.myLocationActive) {
+    // ── Turn OFF ──
+    stopMyLocation();
+    btn.classList.remove('active');
+    return;
+  }
+
+  if (!('geolocation' in navigator)) {
+    alert('Geolocation is not supported by your browser.');
+    return;
+  }
+
+  btn.classList.add('active');
+  state.myLocationActive = true;
+
+  // Get initial position and fly to it
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      plotMyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      flyToMyLocation(pos.coords.latitude, pos.coords.longitude);
+    },
+    err => {
+      console.warn('[GeoLocation] Error:', err.message);
+      alert('Could not access your location. Please allow location permissions.');
+      stopMyLocation();
+      btn.classList.remove('active');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+
+  // Continuously watch for location changes
+  state.geoWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      plotMyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+    },
+    err => {
+      console.warn('[GeoLocation] Watch error:', err.message);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+  );
+}
+
+function stopMyLocation() {
+  state.myLocationActive = false;
+
+  if (state.geoWatchId !== null) {
+    navigator.geolocation.clearWatch(state.geoWatchId);
+    state.geoWatchId = null;
+  }
+  if (state.myLocationEntity && state.viewer) {
+    state.viewer.entities.remove(state.myLocationEntity);
+    state.myLocationEntity = null;
+  }
+  if (state.myLocationRingEntity && state.viewer) {
+    state.viewer.entities.remove(state.myLocationRingEntity);
+    state.myLocationRingEntity = null;
+  }
+}
+
+function plotMyLocation(lat, lon, accuracy) {
+  if (!state.viewer) return;
+
+  // Remove previous entities
+  if (state.myLocationEntity) state.viewer.entities.remove(state.myLocationEntity);
+  if (state.myLocationRingEntity) state.viewer.entities.remove(state.myLocationRingEntity);
+
+  // Accuracy ring radius (clamp between 50m and 2000m for visibility)
+  const ringRadius = Math.max(50, Math.min(accuracy || 100, 2000));
+
+  // Blue accuracy circle on the ground
+  state.myLocationRingEntity = state.viewer.entities.add({
+    name: '_my_location_ring',
+    position: Cesium.Cartesian3.fromDegrees(lon, lat),
+    ellipse: {
+      semiMinorAxis: ringRadius,
+      semiMajorAxis: ringRadius,
+      height: 0,
+      material: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.12)'),
+      outline: true,
+      outlineColor: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.4)'),
+      outlineWidth: 1,
+    }
+  });
+
+  // Bright blue dot
+  state.myLocationEntity = state.viewer.entities.add({
+    name: '_my_location',
+    position: Cesium.Cartesian3.fromDegrees(lon, lat, 200),
+    point: {
+      pixelSize: 12,
+      color: Cesium.Color.fromCssColorString('#3b82f6'),
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 3,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    },
+    label: {
+      text: 'You are here',
+      font: 'bold 11px Inter, sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.fromCssColorString('#050d1a'),
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -12),
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      showBackground: true,
+      backgroundColor: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.85)'),
+      backgroundPadding: new Cesium.Cartesian2(8, 5),
+    }
+  });
+}
+
+function flyToMyLocation(lat, lon) {
+  if (!state.viewer) return;
+  state.viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat, 50000),
+    orientation: {
+      heading: Cesium.Math.toRadians(0),
+      pitch: Cesium.Math.toRadians(-55),
+      roll: 0,
+    },
+    duration: 2.5,
   });
 }
 
