@@ -31,6 +31,9 @@ const state = {
   historicalDate:      null,        // ISO date string when in historical mode
   savedLiveForecasts:  null,        // snapshot of live districtForecasts
   savedLiveRiskData:   null,        // snapshot of live districtRiskData
+  evacuationEntities:  [],          // List of Cesium Entities for safe zones
+  evacuationData:      [],          // JSON data from evacuation_points.json
+  showEvacuationPoints: false,      // UI toggle state
 };
 
 // ══════════════════════════════════════════════════════════ INIT ══
@@ -52,6 +55,7 @@ async function init() {
   initToggles();
   initHistoricalDatePicker();
   await loadActivityLog();
+  await loadEvacuationPoints();
   startPrecomputePolling();
 }
 
@@ -648,8 +652,31 @@ function openDistrictModal(name) {
   // Reset gauge
   updateModalGauge(null, null, null);
 
+  // Update Safe Zone
+  updateNearestSafeZone(name);
+
   // Load forecast
   loadDistrictForecast(name);
+}
+
+function updateNearestSafeZone(districtName) {
+  const el = document.getElementById('modal-safezone-text');
+  if (!el) return;
+  
+  if (!state.evacuationData || state.evacuationData.length === 0) {
+    el.textContent = "Safe zone data not loaded.";
+    return;
+  }
+  
+  const zones = state.evacuationData.filter(z => z.district === districtName);
+  if (zones.length > 0) {
+    // Just pick the first one matching the district
+    const z = zones[0];
+    el.innerHTML = `<strong>${z.name}</strong> (${z.type})<br><span style="font-size:9px; color:var(--text-muted)">Capacity: ~${z.capacity} people</span>`;
+  } else {
+    // Fallback if no exact district match
+    el.textContent = "No designated safe zone mapped for this district yet.";
+  }
 }
 
 function closeDistrictModal() {
@@ -1227,6 +1254,69 @@ function returnToLive() {
   }
 
   console.log('[Historical] Returned to live mode.');
+}
+
+// ════════════════════════════════════════════ EVACUATION POINTS ══
+async function loadEvacuationPoints() {
+  try {
+    const resp = await fetch('/static/evacuation_points.json');
+    if (!resp.ok) return;
+    state.evacuationData = await resp.json();
+  } catch (err) {
+    console.warn('[Evacuation] Failed to load evacuation points:', err);
+  }
+}
+
+function toggleEvacuationPoints(show) {
+  state.showEvacuationPoints = show;
+  
+  if (!state.viewer) return;
+
+  // If turning off, remove all entities
+  if (!show) {
+    state.evacuationEntities.forEach(e => state.viewer.entities.remove(e));
+    state.evacuationEntities = [];
+    return;
+  }
+
+  // If turning on, render them
+  const colors = {
+    'School': '#3b82f6',
+    'Temple': '#f59e0b',
+    'Stadium': '#10b981',
+    'default': '#22d3ee'
+  };
+
+  state.evacuationData.forEach(pt => {
+    const colorStr = colors[pt.type] || colors['default'];
+    
+    const entity = state.viewer.entities.add({
+      name: pt.name,
+      position: Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, pt.elevation_m || 20),
+      point: {
+        pixelSize: 8,
+        color: Cesium.Color.fromCssColorString(colorStr),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      label: {
+        text: `🛡️ ${pt.name}`,
+        font: '10px Inter, sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -10),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        showBackground: true,
+        backgroundColor: Cesium.Color.fromCssColorString('rgba(5,13,26,0.8)'),
+        backgroundPadding: new Cesium.Cartesian2(6, 4)
+      }
+    });
+    state.evacuationEntities.push(entity);
+  });
 }
 
 // ════════════════════════════════════════════════════ START ══

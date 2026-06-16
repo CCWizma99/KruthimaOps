@@ -1031,6 +1031,18 @@ html, body {
 .styled-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
 
 /* ── TOGGLE ─────────────────────────────────────────────────── */
+.toggle-checkbox {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-checkbox input {
+  cursor: pointer;
+  accent-color: var(--accent-cyan);
+}
 .toggle-group { display: flex; flex-direction: column; gap: 6px; }
 .toggle-row { display: flex; gap: 6px; }
 .toggle-btn {
