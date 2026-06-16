@@ -148,6 +148,8 @@ html, body {
   background: var(--accent-cyan);
   border-radius: 50%;
 }
+.refresh-chip { color: var(--text-muted); font-size: 10px; }
+.refresh-icon { font-size: 11px; }
 .live-chip { border-color: rgba(34,197,94,0.3); color: var(--risk-low); }
 .pulse-dot {
   width: 6px; height: 6px;
