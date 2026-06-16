@@ -180,7 +180,11 @@ async def predict(payload: PredictRequest):
 
     # 2. Infer
     try:
-        score = infer(clean_data)
+        result = infer(clean_data)
+        if isinstance(result, tuple):
+            score, variance = result
+        else:
+            score, variance = result, None
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
@@ -221,6 +225,7 @@ async def predict(payload: PredictRequest):
         latency_ms=latency_ms,
         warnings=warnings,
         briefing=briefing_text or None,
+        variance=variance,
     )
 
 

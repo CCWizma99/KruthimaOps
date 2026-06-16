@@ -278,8 +278,9 @@ def engineer_features(df, dist_elev_std, lc_inund_mean, comb_inund_mean, soil_ma
         (df["is_good_to_live"].astype(str).str.strip().str.lower() == "no")
     ).astype(int)
 
-    df["is_historical_water"]     = (df.get("water_occurrence_pct", 0.0) > 5.0).astype(int)
-    df["water_elevation_ratio"]   = df.get("water_occurrence_pct", 0.0) / (df["elevation_m"] + 1.0)
+    df["water_occurrence_pct"]    = df.get("water_occurrence_pct", 0.0)
+    df["is_historical_water"]     = (df["water_occurrence_pct"] > 5.0).astype(int)
+    df["water_elevation_ratio"]   = df["water_occurrence_pct"] / (df["elevation_m"] + 1.0)
 
     df['landcover_mean_inundation_val'] = df['landcover'].astype(str).map(lc_inund_mean).fillna(comb_inund_mean)
     df['inundation_ratio']            = df['inundation_area_sqm'] / (df['landcover_mean_inundation_val'] + 1.0)

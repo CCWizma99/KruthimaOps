@@ -119,7 +119,8 @@ def get_district_forecast(district: str) -> List[Dict[str, Any]]:
             "generation_date":                t_date, # ← critical: drives seasonal features
         }
 
-        score = infer(payload)
+        result = infer(payload)
+        score = result[0] if isinstance(result, tuple) else result
 
         if score < 0.25:
             level = "LOW"
@@ -233,7 +234,8 @@ def get_historical_forecast(district: str, target_date_str: str) -> Dict[str, An
         "generation_date":                target_date_str,
     }
 
-    score = infer(payload)
+    result = infer(payload)
+    score = result[0] if isinstance(result, tuple) else result
 
     if score < 0.25:
         level = "LOW"

@@ -1,6 +1,6 @@
 import sys
 sys.path.append('c:/KruthimaOps/production')
-from app.inference.v703_engine import load_artifacts, infer
+from app.inference.v1000_engine import load_artifacts, infer
 import numpy as np
 import pandas as pd
 import json

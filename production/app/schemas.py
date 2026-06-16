@@ -47,6 +47,7 @@ class PredictResponse(BaseModel):
     latency_ms:     int
     warnings:       List[str]       = []
     briefing:       Optional[str]   = None
+    variance:       Optional[float] = Field(None, description="Statistical variance across the ensemble models")
 
 
 class BatchPredictResponse(BaseModel):
