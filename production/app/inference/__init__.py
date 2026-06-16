@@ -6,6 +6,6 @@ Exposes: infer(features_dict) -> float
          get_district_reference() -> dict
 The API orchestrator calls ONLY these functions.
 """
-from app.inference.v703_engine import infer, load_artifacts, get_model_metadata, get_district_reference
+from app.inference.v1000_engine import infer, load_artifacts, get_model_metadata, get_district_reference
 
 __all__ = ["infer", "load_artifacts", "get_model_metadata", "get_district_reference"]

@@ -1,0 +1,33 @@
+{
+  "version": "prod_v1000",
+  "base_pipeline": "v1000",
+  "seed": 42,
+  "n_folds": 5,
+  "training_date": "2026-06-16T15:56:39.107593",
+  "oof_mae": 0.177757,
+  "oof_rmse": 0.232575,
+  "oof_ev": 0.001811,
+  "est_lb_score": 0.38146,
+  "opt_mae": 0.177664,
+  "opt_rmse": 0.232498,
+  "opt_ev": 0.002425,
+  "opt_lb_score": 0.381304,
+  "model_names": [
+    "XGB-MAE-1 (d7)",
+    "CAT-MAE-1 (d5)",
+    "CAT-MAE-2 (d5)",
+    "CAT-RMSE (d5)",
+    "LGB-MAE (d5)",
+    "XGB-MAE-2 (d5)"
+  ],
+  "n_base_features": 94,
+  "n_total_features": 156,
+  "model_files": {
+    "xgb1": "xgb1.json",
+    "cat1": "cat1.cbm",
+    "cat2": "cat2.cbm",
+    "catrmse": "catrmse.cbm",
+    "lgb1": "lgb1.txt",
+    "xgb2": "xgb2.json"
+  }
+}

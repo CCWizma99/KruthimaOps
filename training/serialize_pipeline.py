@@ -51,7 +51,7 @@ warnings.filterwarnings("ignore")
 # PATHS
 # ============================================================
 DATA_DIR    = "data"
-OUTPUT_DIR  = os.path.join("production", "models", "prod_v1")
+OUTPUT_DIR  = os.path.join("production", "models", "prod_v1000")
 DIST_REF    = os.path.join("production", "data", "district_reference.json")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(DIST_REF), exist_ok=True)
@@ -84,8 +84,12 @@ print("=" * 75)
 # 1. LOAD & DEDUPLICATE
 # ============================================================
 print("\n[LOAD] Loading data...")
-train_df = pd.read_csv(os.path.join(DATA_DIR, "train.csv"))
+train_df = pd.read_csv("C:/KruthimaOps/data/train_v1001_gee.csv")
+train_df = train_df[train_df['is_synthetic'].isna()].reset_index(drop=True)
 test_df  = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
+for col in ["hand_metric", "slope_deg", "water_occurrence_pct"]:
+    if col not in test_df.columns:
+        test_df[col] = 0.0
 train_df = train_df.drop_duplicates()
 print(f"   Train: {train_df.shape}  Test: {test_df.shape}")
 
@@ -273,6 +277,10 @@ def engineer_features(df, dist_elev_std, lc_inund_mean, comb_inund_mean, soil_ma
         (df["flood_occurrence_current_event"].astype(str).str.strip().str.lower() == "yes") &
         (df["is_good_to_live"].astype(str).str.strip().str.lower() == "no")
     ).astype(int)
+
+    df["is_historical_water"]     = (df.get("water_occurrence_pct", 0.0) > 5.0).astype(int)
+    df["water_elevation_ratio"]   = df.get("water_occurrence_pct", 0.0) / (df["elevation_m"] + 1.0)
+
     df['landcover_mean_inundation_val'] = df['landcover'].astype(str).map(lc_inund_mean).fillna(comb_inund_mean)
     df['inundation_ratio']            = df['inundation_area_sqm'] / (df['landcover_mean_inundation_val'] + 1.0)
     ndwi_clip = df["ndwi_qmap"].clip(lower=0.0)
@@ -745,8 +753,8 @@ with open(os.path.join(OUTPUT_DIR, "posthoc.json"), "w") as f:
 print("   posthoc.json saved.")
 
 metadata = {
-    'version':          'prod_v1',
-    'base_pipeline':    'v703',
+    'version':          'prod_v1000',
+    'base_pipeline':    'v1000',
     'seed':             SEED,
     'n_folds':          N_FOLDS,
     'training_date':    datetime.now().isoformat(),
@@ -779,6 +787,16 @@ print("   model_metadata.json saved.")
 # ============================================================
 print("\n[SERIALIZE] Building district_reference.json...")
 
+# Load existing reference json to preserve correct map coordinates
+existing_ref = {}
+if os.path.exists(DIST_REF):
+    try:
+        with open(DIST_REF, 'r') as f:
+            existing_ref = json.load(f)
+        print(f"   Loaded existing district_reference.json with {len(existing_ref)} districts to preserve coordinates.")
+    except Exception as e:
+        print(f"   Warning: could not load existing reference file: {e}")
+
 # Use the raw test snapshot (before engineer_features)
 # Merge with test_df to add freq features that were computed on test_df
 freq_feat_cols = [f'{col}_freq' for col in FREQ_COLS if f'{col}_freq' in test_df_raw_snap.columns]
@@ -800,14 +818,106 @@ for district, group in test_df_raw_snap.groupby('district'):
             ref[col] = str(mode_val.iloc[0]) if len(mode_val) > 0 else "missing"
     # Ensure generation_date is set to a representative value
     ref['generation_date'] = "2024-06-15"  # Fixed representative date
-    # Coordinates for map centering
-    ref['center_lat'] = float(group['latitude'].median())
-    ref['center_lon'] = float(group['longitude'].median())
+    # Coordinates for map centering (preserve original if they exist)
+    if str(district) in existing_ref and 'center_lat' in existing_ref[str(district)] and 'center_lon' in existing_ref[str(district)]:
+        ref['center_lat'] = existing_ref[str(district)]['center_lat']
+        ref['center_lon'] = existing_ref[str(district)]['center_lon']
+    else:
+        ref['center_lat'] = float(group['latitude'].median())
+        ref['center_lon'] = float(group['longitude'].median())
     district_ref[str(district)] = ref
 
 with open(DIST_REF, "w") as f:
     json.dump(district_ref, f, indent=2)
 print(f"   district_reference.json saved with {len(district_ref)} districts.")
+
+# ============================================================
+# 12. [SERIALIZE] PROD V1000 COMPATIBLE MODELS (XGB, LGB, CAT)
+# ============================================================
+print("\n[SERIALIZE] Training production compatible baseline models...")
+
+# Define baseline features list expected by v1000_engine
+prod_features = [
+    "district", "latitude", "longitude", "elevation_m", "distance_to_river_m",
+    "landcover", "soil_type", "water_supply", "electricity", "road_quality",
+    "population_density_per_km2", "built_up_percent", "urban_rural",
+    "rainfall_7d_mm", "monthly_rainfall_mm", "drainage_index", "ndvi", "ndwi",
+    "water_presence_flag", "historical_flood_count", "infrastructure_score",
+    "nearest_hospital_km", "nearest_evac_km", "flood_occurrence_current_event",
+    "inundation_area_sqm", "is_good_to_live", "reason_not_good_to_live",
+    "seasonal_index", "terrain_roughness_index", "socioeconomic_status_index",
+    "extreme_weather_index", "hand_metric", "slope_deg", "water_occurrence_pct"
+]
+
+prod_cat_cols = [
+    "district", "landcover", "soil_type", "water_supply", "electricity",
+    "road_quality", "urban_rural", "water_presence_flag",
+    "flood_occurrence_current_event", "is_good_to_live", "reason_not_good_to_live"
+]
+
+# Get the clean training data (no synthetic rows, no pseudo labels)
+train_real = train_df[train_df['is_pseudo'] == 0].copy()
+
+# Restore dropped inundation_area_sqm column from raw CSV
+raw_inund = pd.read_csv("C:/KruthimaOps/data/train_v1001_gee.csv")[["record_id", "inundation_area_sqm"]]
+train_real = train_real.merge(raw_inund, on="record_id", how="left")
+
+# Fill missing categoricals as 'missing' and continuous as median
+medians = {}
+for col in prod_features:
+    if col in prod_cat_cols:
+        train_real[col] = train_real[col].fillna("missing").astype(str)
+        medians[col] = "missing"
+    else:
+        median_val = float(train_real[col].median()) if not train_real[col].isna().all() else 0.0
+        train_real[col] = train_real[col].fillna(median_val)
+        medians[col] = median_val
+
+# Prepare training data (category dtypes)
+X_prod = train_real[prod_features].copy()
+for col in prod_cat_cols:
+    X_prod[col] = X_prod[col].astype("category")
+
+y_prod = train_real[TARGET]
+
+# Train production XGBoost on all real rows
+xgb_prod = xgb.XGBRegressor(
+    n_estimators=500, learning_rate=0.03, max_depth=5,
+    objective="reg:absoluteerror", tree_method="hist",
+    enable_categorical=True, random_state=SEED, n_jobs=-1
+)
+xgb_prod.fit(X_prod, y_prod, verbose=False)
+
+# Train production LightGBM on all real rows
+lgb_prod = lgb.LGBMRegressor(
+    n_estimators=500, learning_rate=0.03, max_depth=5,
+    objective="regression_l1", random_state=SEED, n_jobs=-1, verbosity=-1
+)
+lgb_prod.fit(X_prod, y_prod)
+
+# Train production CatBoost on all real rows
+cat_prod = cb.CatBoostRegressor(
+    iterations=500, learning_rate=0.03, depth=5,
+    loss_function="MAE", random_seed=SEED, verbose=False
+)
+cat_prod.fit(X_prod, y_prod, cat_features=prod_cat_cols, verbose=False)
+
+# Save the models in the exact filenames expected by v1000_engine
+xgb_prod.save_model(os.path.join(OUTPUT_DIR, "xgb.json"))
+lgb_prod.booster_.save_model(os.path.join(OUTPUT_DIR, "lgb.txt"))
+cat_prod.save_model(os.path.join(OUTPUT_DIR, "cat.cbm"))
+
+# Save feature_info.json
+feature_info = {
+    "features": prod_features,
+    "cat_cols": prod_cat_cols,
+    "medians": medians,
+    "categories": cat_dtype_map
+}
+with open(os.path.join(OUTPUT_DIR, "feature_info.json"), "w") as f:
+    json.dump(feature_info, f, indent=2)
+
+print("   xgb.json, lgb.txt, cat.cbm, and feature_info.json saved successfully for v1000_engine.")
 
 total_time = time.time() - t_start
 print(f"\n{'=' * 75}")

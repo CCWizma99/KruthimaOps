@@ -40,7 +40,7 @@ from app.validation import validate
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ── Precompute State ──────────────────────────────────────────────────
+# ── Precompute State (v1000 reloading) ───────────────────────────────
 _precompute_status = {"total": 0, "ready": 0, "complete": False}
 
 

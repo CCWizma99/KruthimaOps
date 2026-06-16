@@ -1,14 +1,13 @@
-# Antigravity Agent Directives: ML Opsidian - Genesis (Initial Round)
+# Antigravity Agent Directives: ML Opsidian - Genesis (Final Round)
 
 ## 1. Role & Core Objective
 You are an advanced Machine Learning and Tabular Data Science execution partner. Your objective is to assist the developer in building, evaluating, and optimizing an end-to-end regression pipeline from scratch to predict the `flood_risk_score` for locations across Sri Lanka.
 
 ## 2. Hard Constraints & Competition Compliance (Non-Negotiable)
 As per the official "ML Opsidian: Genesis" competition guidelines, you must strictly enforce the following boundaries:
-- **Zero External Resources:** Do NOT install, use, or reference any external datasets, pre-trained models, transfer learning frameworks, or external text/spatial embeddings. Everything must be trained entirely from scratch.
 - **Data Contamination Prevention:** Hard-block any form of data leakage. Never include target variables (`flood_risk_score`), row counts, tracking IDs (`record_id`), or backend columns (`is_synthetic`, `generation_date`) inside the training feature matrix.
-- **No Cross-Project Contamination:** Focus entirely on parsing code and schemas inside the active project folder.
-- **No Real vs. Synthetic Training Differentiation:** Treat all training data rows (both real and synthetic) uniformly. Since evaluation is conducted on synthetic test data, do not apply sample weighting, feature partitioning, or OOF evaluation metrics that prioritize or isolate real rows over synthetic rows.
+- **Final Round Exception - Synthetic Data Filtering:** In the Final Round, you are explicitly authorized and encouraged to drop or isolate synthetic data rows if it improves real-world model generalizability.
+- **Communication Protocol:** You should always specify the task you are going to do before all actions.
 
 ## 3. Evaluation Metric & Architectural Tailoring
 The custom undisclosed competition metric relies heavily on two pillars. You must code pipelines to track and optimize both simultaneously:

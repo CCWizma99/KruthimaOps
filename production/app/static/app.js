@@ -74,8 +74,7 @@ function initHistoricalDatePicker() {
 function initCesium() {
   try {
     const opts = {
-      baseLayerPicker:      false,
-      baseLayer:            false,
+      baseLayerPicker:      true,
       navigationHelpButton: false,
       sceneModePicker:      false,
       homeButton:           false,
@@ -95,12 +94,7 @@ function initCesium() {
 
     state.viewer = new Cesium.Viewer('cesium-container', opts);
 
-    state.viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        credit: 'Map tiles by Carto, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
-    }));
-
-    // Show the globe for CartoDB map, but hide sun/moon/atmosphere for clean UI
+    // Show the globe for map layers, but hide sun/moon/atmosphere for clean UI
     state.viewer.scene.globe.show = true;
     if (state.viewer.scene.sun) state.viewer.scene.sun.show = false;
     if (state.viewer.scene.moon) state.viewer.scene.moon.show = false;
@@ -616,8 +610,9 @@ async function loadModelCard() {
     const r = await fetch(`${API_BASE}/api/models`);
     if (!r.ok) return;
     const m = await r.json();
+    const versionText = m.base_pipeline ? `${m.base_pipeline.toUpperCase()} pipeline` : 'V703 pipeline';
     document.getElementById('model-version-label').textContent =
-      `v703 pipeline | LB ${m.opt_lb_score?.toFixed(5) ?? '—'}`;
+      `${versionText} | LB ${m.opt_lb_score?.toFixed(5) ?? '—'}`;
     document.getElementById('stat-pipeline').textContent = m.base_pipeline ?? '—';
     document.getElementById('stat-mae').textContent      = m.oof_mae?.toFixed(5) ?? '—';
     document.getElementById('stat-ev').textContent       = m.oof_ev?.toFixed(5) ?? '—';
