@@ -31,6 +31,14 @@ const state = {
   historicalDate:      null,        // ISO date string when in historical mode
   savedLiveForecasts:  null,        // snapshot of live districtForecasts
   savedLiveRiskData:   null,        // snapshot of live districtRiskData
+  evacuationEntities:  [],          // List of Cesium Entities for safe zones
+  evacuationData:      [],          // JSON data from evacuation_points.json
+  showEvacuationPoints: false,      // UI toggle state
+  // Geolocation
+  myLocationActive:    false,
+  myLocationEntity:    null,        // Cesium entity for user's location pin
+  myLocationRingEntity: null,       // Cesium entity for pulsing accuracy ring
+  geoWatchId:          null,        // navigator.geolocation watchPosition ID
 };
 
 // ══════════════════════════════════════════════════════════ INIT ══
@@ -52,7 +60,63 @@ async function init() {
   initToggles();
   initHistoricalDatePicker();
   await loadActivityLog();
+  await loadEvacuationPoints();
   startPrecomputePolling();
+
+  // Show last refresh time (from SW cache or set to now)
+  updateLastRefreshTime();
+}
+
+/** Update the "Last Refreshed" chip in the header */
+function updateLastRefreshTime() {
+  const el = document.getElementById('last-refresh-label');
+  if (!el) return;
+
+  // Try to read the timestamp stored by the Service Worker
+  if ('caches' in window) {
+    caches.open('floodguard-cache-v4').then(cache => {
+      cache.match('/__last_refresh_time__').then(resp => {
+        if (resp) {
+          resp.text().then(ts => {
+            const d = new Date(ts);
+            if (!isNaN(d)) {
+              el.textContent = formatRefreshTime(d);
+              return;
+            }
+          });
+        }
+        // No cached timestamp — set to now (first load)
+        setRefreshTimeNow();
+      });
+    }).catch(() => setRefreshTimeNow());
+  } else {
+    setRefreshTimeNow();
+  }
+}
+
+function setRefreshTimeNow() {
+  const el = document.getElementById('last-refresh-label');
+  if (el) el.textContent = formatRefreshTime(new Date());
+  // Also store it
+  if ('caches' in window) {
+    caches.open('floodguard-cache-v4').then(cache => {
+      cache.put(
+        new Request('/__last_refresh_time__'),
+        new Response(new Date().toISOString())
+      );
+    }).catch(() => {});
+  }
+}
+
+function formatRefreshTime(d) {
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1)  return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24)  return `${diffHr}h ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function initHistoricalDatePicker() {
@@ -86,10 +150,6 @@ function initCesium() {
       selectionIndicator:   false,
       skyBox:               false,
       skyAtmosphere:        new Cesium.SkyAtmosphere(),
-      imageryProvider:      new Cesium.UrlTemplateImageryProvider({
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        credit: 'Map tiles by Carto, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
-      }),
     };
 
     if (Cesium.Ion.defaultAccessToken) {
@@ -98,8 +158,27 @@ function initCesium() {
 
     state.viewer = new Cesium.Viewer('cesium-container', opts);
 
-    // Show the globe for CartoDB map, but hide sun/moon/atmosphere for clean UI
+    // Replace default Cesium Ion base layer with CartoDB dark tiles
+    // Uses the modern ImageryLayer constructor (addImageryProvider is deprecated)
+    try {
+      const cartoProvider = new Cesium.UrlTemplateImageryProvider({
+        url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        minimumLevel: 0,
+        maximumLevel: 18,
+        credit: 'Map tiles by Carto, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
+      });
+      const cartoLayer = new Cesium.ImageryLayer(cartoProvider);
+      // Remove default Ion imagery first, then add dark CartoDB
+      state.viewer.imageryLayers.removeAll();
+      state.viewer.imageryLayers.add(cartoLayer);
+      console.log('[CesiumJS] CartoDB dark base layer added successfully.');
+    } catch (e) {
+      console.warn('[CesiumJS] CartoDB tiles failed, keeping default imagery:', e);
+    }
+
+    // Show the globe, hide sun/moon/atmosphere for clean dark UI
     state.viewer.scene.globe.show = true;
+    state.viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a1628');
     if (state.viewer.scene.sun) state.viewer.scene.sun.show = false;
     if (state.viewer.scene.moon) state.viewer.scene.moon.show = false;
     if (state.viewer.scene.skyAtmosphere) state.viewer.scene.skyAtmosphere.show = false;
@@ -648,8 +727,31 @@ function openDistrictModal(name) {
   // Reset gauge
   updateModalGauge(null, null, null);
 
+  // Update Safe Zone
+  updateNearestSafeZone(name);
+
   // Load forecast
   loadDistrictForecast(name);
+}
+
+function updateNearestSafeZone(districtName) {
+  const el = document.getElementById('modal-safezone-text');
+  if (!el) return;
+  
+  if (!state.evacuationData || state.evacuationData.length === 0) {
+    el.textContent = "Safe zone data not loaded.";
+    return;
+  }
+  
+  const zones = state.evacuationData.filter(z => z.district === districtName);
+  if (zones.length > 0) {
+    // Just pick the first one matching the district
+    const z = zones[0];
+    el.innerHTML = `<strong>${z.name}</strong> (${z.type})<br><span style="font-size:9px; color:var(--text-muted)">Capacity: ~${z.capacity} people</span>`;
+  } else {
+    // Fallback if no exact district match
+    el.textContent = "No designated safe zone mapped for this district yet.";
+  }
 }
 
 function closeDistrictModal() {
@@ -1250,6 +1352,199 @@ function returnToLive() {
   }
 
   console.log('[Historical] Returned to live mode.');
+}
+
+// ════════════════════════════════════════════ EVACUATION POINTS ══
+async function loadEvacuationPoints() {
+  try {
+    const resp = await fetch('/static/evacuation_points.json');
+    if (!resp.ok) return;
+    state.evacuationData = await resp.json();
+  } catch (err) {
+    console.warn('[Evacuation] Failed to load evacuation points:', err);
+  }
+}
+
+function toggleEvacuationPoints(show) {
+  state.showEvacuationPoints = show;
+  
+  if (!state.viewer) return;
+
+  // If turning off, remove all entities
+  if (!show) {
+    state.evacuationEntities.forEach(e => state.viewer.entities.remove(e));
+    state.evacuationEntities = [];
+    return;
+  }
+
+  // If turning on, render them
+  const colors = {
+    'School': '#3b82f6',
+    'Temple': '#f59e0b',
+    'Stadium': '#10b981',
+    'default': '#22d3ee'
+  };
+
+  state.evacuationData.forEach(pt => {
+    const colorStr = colors[pt.type] || colors['default'];
+    
+    const entity = state.viewer.entities.add({
+      name: pt.name,
+      position: Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, pt.elevation_m || 20),
+      point: {
+        pixelSize: 8,
+        color: Cesium.Color.fromCssColorString(colorStr),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      label: {
+        text: `🛡️ ${pt.name}`,
+        font: '10px Inter, sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -10),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        showBackground: true,
+        backgroundColor: Cesium.Color.fromCssColorString('rgba(5,13,26,0.8)'),
+        backgroundPadding: new Cesium.Cartesian2(6, 4)
+      }
+    });
+    state.evacuationEntities.push(entity);
+  });
+}
+
+// ════════════════════════════════════════════════════ MY LOCATION ══
+
+function toggleMyLocation() {
+  const btn = document.getElementById('my-location-btn');
+
+  if (state.myLocationActive) {
+    // ── Turn OFF ──
+    stopMyLocation();
+    btn.classList.remove('active');
+    return;
+  }
+
+  if (!('geolocation' in navigator)) {
+    alert('Geolocation is not supported by your browser.');
+    return;
+  }
+
+  btn.classList.add('active');
+  state.myLocationActive = true;
+
+  // Get initial position and fly to it
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      plotMyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      flyToMyLocation(pos.coords.latitude, pos.coords.longitude);
+    },
+    err => {
+      console.warn('[GeoLocation] Error:', err.message);
+      alert('Could not access your location. Please allow location permissions.');
+      stopMyLocation();
+      btn.classList.remove('active');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+
+  // Continuously watch for location changes
+  state.geoWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      plotMyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+    },
+    err => {
+      console.warn('[GeoLocation] Watch error:', err.message);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+  );
+}
+
+function stopMyLocation() {
+  state.myLocationActive = false;
+
+  if (state.geoWatchId !== null) {
+    navigator.geolocation.clearWatch(state.geoWatchId);
+    state.geoWatchId = null;
+  }
+  if (state.myLocationEntity && state.viewer) {
+    state.viewer.entities.remove(state.myLocationEntity);
+    state.myLocationEntity = null;
+  }
+  if (state.myLocationRingEntity && state.viewer) {
+    state.viewer.entities.remove(state.myLocationRingEntity);
+    state.myLocationRingEntity = null;
+  }
+}
+
+function plotMyLocation(lat, lon, accuracy) {
+  if (!state.viewer) return;
+
+  // Remove previous entities
+  if (state.myLocationEntity) state.viewer.entities.remove(state.myLocationEntity);
+  if (state.myLocationRingEntity) state.viewer.entities.remove(state.myLocationRingEntity);
+
+  // Accuracy ring radius (clamp between 50m and 2000m for visibility)
+  const ringRadius = Math.max(50, Math.min(accuracy || 100, 2000));
+
+  // Blue accuracy circle on the ground
+  state.myLocationRingEntity = state.viewer.entities.add({
+    name: '_my_location_ring',
+    position: Cesium.Cartesian3.fromDegrees(lon, lat),
+    ellipse: {
+      semiMinorAxis: ringRadius,
+      semiMajorAxis: ringRadius,
+      height: 0,
+      material: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.12)'),
+      outline: true,
+      outlineColor: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.4)'),
+      outlineWidth: 1,
+    }
+  });
+
+  // Bright blue dot
+  state.myLocationEntity = state.viewer.entities.add({
+    name: '_my_location',
+    position: Cesium.Cartesian3.fromDegrees(lon, lat, 200),
+    point: {
+      pixelSize: 12,
+      color: Cesium.Color.fromCssColorString('#3b82f6'),
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 3,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    },
+    label: {
+      text: 'You are here',
+      font: 'bold 11px Inter, sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.fromCssColorString('#050d1a'),
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -12),
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      showBackground: true,
+      backgroundColor: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.85)'),
+      backgroundPadding: new Cesium.Cartesian2(8, 5),
+    }
+  });
+}
+
+function flyToMyLocation(lat, lon) {
+  if (!state.viewer) return;
+  state.viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat, 50000),
+    orientation: {
+      heading: Cesium.Math.toRadians(0),
+      pitch: Cesium.Math.toRadians(-55),
+      roll: 0,
+    },
+    duration: 2.5,
+  });
 }
 
 // ════════════════════════════════════════════════════ START ══
