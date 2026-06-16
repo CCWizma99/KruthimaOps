@@ -61,6 +61,18 @@
 
     <div class="divider"></div>
 
+    <div class="panel-section">
+      <label class="field-label">🗺️ Map Layers</label>
+      <div class="toggle-row" style="margin-top: 8px;">
+        <label class="toggle-checkbox">
+          <input type="checkbox" id="toggle-evacuation-points" onchange="toggleEvacuationPoints(this.checked)" style="margin-right: 8px;">
+          Show Safe Zones
+        </label>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
     <button class="simulate-btn" id="simulate-btn" onclick="openWhatIfModal()" disabled>
       ⚡ Simulate Scenario
     </button>
@@ -244,6 +256,10 @@
       <div class="modal-section-label">🤖 AI Safety Briefing</div>
       <div class="modal-briefing-text" id="modal-briefing-text">
         Run a prediction or select a forecast day to receive an AI-generated safety advisory.
+      </div>
+      <div class="modal-section-label" style="margin-top: 8px;">🛡️ Nearest Safe Zone</div>
+      <div class="modal-briefing-text" id="modal-safezone-text" style="color: var(--accent-cyan); font-weight: 500;">
+        Select a district to view the nearest safe zone.
       </div>
       <div class="modal-warnings" id="modal-warnings" style="display:none"></div>
       <div class="modal-feedback-row" id="modal-feedback-row" style="display:none">
