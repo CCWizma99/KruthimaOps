@@ -148,6 +148,8 @@ html, body {
   background: var(--accent-cyan);
   border-radius: 50%;
 }
+.refresh-chip { color: var(--text-muted); font-size: 10px; }
+.refresh-icon { font-size: 11px; }
 .live-chip { border-color: rgba(34,197,94,0.3); color: var(--risk-low); }
 .pulse-dot {
   width: 6px; height: 6px;
@@ -1031,6 +1033,18 @@ html, body {
 .styled-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
 
 /* ── TOGGLE ─────────────────────────────────────────────────── */
+.toggle-checkbox {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-checkbox input {
+  cursor: pointer;
+  accent-color: var(--accent-cyan);
+}
 .toggle-group { display: flex; flex-direction: column; gap: 6px; }
 .toggle-row { display: flex; gap: 6px; }
 .toggle-btn {
@@ -1196,4 +1210,39 @@ html, body {
 .whatif-report-btn {
   margin-top: 10px;
   width: 100%;
+/* ── MY LOCATION BUTTON ──────────────────────────────────────── */
+.my-location-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 38px;
+  height: 38px;
+  background: rgba(10, 22, 40, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+.my-location-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: rgba(34, 211, 238, 0.08);
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.15);
+}
+.my-location-btn.active {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.12);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.25);
+  animation: locBtnPulse 2.5s ease-in-out infinite;
+}
+@keyframes locBtnPulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
+  50%      { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
 }
