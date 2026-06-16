@@ -233,6 +233,7 @@
     </div>
     <div class="district-modal-actions">
       <button class="modal-simulate-btn" id="modal-simulate-btn" onclick="openWhatIfModal()">⚡ Simulate</button>
+      <button class="modal-report-btn" id="modal-report-btn" onclick="downloadReport()" disabled>📄 Report</button>
       <button class="modal-close-btn" onclick="closeDistrictModal()">✕</button>
     </div>
   </div>
@@ -376,6 +377,7 @@
       </div>
       <div class="whatif-briefing" id="whatif-briefing">—</div>
       <div class="whatif-warnings-list" id="whatif-warnings" style="display:none"></div>
+      <button class="whatif-report-btn" id="whatif-report-btn" onclick="downloadReport()" style="display:none">📄 Download PDF Report</button>
     </div>
   </div>
 

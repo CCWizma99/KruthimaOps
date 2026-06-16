@@ -17,13 +17,14 @@ from typing import Any
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app import config
 from app.briefing import brief
 from app.inference import get_district_reference, get_model_metadata, infer, load_artifacts
-from app.monitoring import get_metrics, get_recent_predictions, init_db, log_error, log_feedback, log_prediction
+from app.monitoring import get_metrics, get_prediction_by_id, get_recent_predictions, init_db, log_error, log_feedback, log_prediction
+from app.reports import build_prediction_report_pdf
 from app.schemas import (
     BatchPredictRequest,
     BatchPredictResponse,
@@ -268,6 +269,31 @@ async def metrics():
 @app.get("/api/log", tags=["Monitoring"])
 async def activity_log(limit: int = 50):
     return {"predictions": get_recent_predictions(limit=limit)}
+
+
+# ── PDF Report Generation ────────────────────────────────────────────
+
+@app.get("/api/report/{prediction_id}", tags=["Reports"])
+async def prediction_report(prediction_id: str):
+    """Generate a downloadable PDF report from a logged prediction."""
+    prediction = get_prediction_by_id(prediction_id)
+    if not prediction:
+        raise HTTPException(status_code=404, detail="Prediction ID not found in monitoring log.")
+
+    try:
+        pdf_bytes = build_prediction_report_pdf(
+            prediction=prediction,
+            model_metadata=get_model_metadata(),
+            metrics=get_metrics(),
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    short_id = prediction_id.split("-")[0]
+    headers = {
+        "Content-Disposition": f'attachment; filename="FloodGuard_SL_Report_{short_id}.pdf"'
+    }
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
 # ── Model Registry ────────────────────────────────────────────────────
