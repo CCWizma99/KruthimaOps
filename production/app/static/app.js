@@ -844,6 +844,28 @@ function initToggles() {
   });
 }
 
+
+
+function setReportButtonsEnabled(enabled) {
+  const modalBtn = document.getElementById('modal-report-btn');
+  if (modalBtn) modalBtn.disabled = !enabled;
+
+  const whatIfBtn = document.getElementById('whatif-report-btn');
+  if (whatIfBtn) {
+    whatIfBtn.style.display = enabled ? 'inline-flex' : 'none';
+    whatIfBtn.disabled = !enabled;
+  }
+}
+
+function downloadReport() {
+  if (!state.lastPredictionId) {
+    alert('Run a prediction first. The report is generated from the latest prediction ID.');
+    return;
+  }
+  const url = `${API_BASE}/api/report/${encodeURIComponent(state.lastPredictionId)}`;
+  window.open(url, '_blank');
+}
+
 // ════════════════════════════════════════════ PREDICTION ══
 async function runPrediction() {
   const district = state.selectedDistrict;
@@ -880,6 +902,7 @@ async function runPrediction() {
 
     const result = await resp.json();
     state.lastPredictionId = result.prediction_id;
+    setReportButtonsEnabled(true);
 
     // Show result in what-if modal
     showWhatIfResult(result, district);
