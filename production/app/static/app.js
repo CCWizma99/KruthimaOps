@@ -11,26 +11,34 @@ const API_BASE = '';   // same origin
 
 // ══════════════════════════════════════════════════════════ STATE ══
 const state = {
-  viewer:              null,
-  districts:           {},          // name → reference data
-  riskEntities:        {},          // name → [entity, entity, …] for cleanup
-  selectedDistrict:    null,
-  lastPredictionId:    null,
-  logRows:             [],
-  flood_occurrence:    'No',
-  is_good_to_live:     'Yes',
-  currentForecast:     [],
+  viewer: null,
+  districts: {},          // name → reference data
+  riskEntities: {},          // name → [entity, entity, …] for cleanup
+  selectedDistrict: null,
+  lastPredictionId: null,
+  logRows: [],
+  flood_occurrence: 'No',
+  is_good_to_live: 'Yes',
+  currentForecast: [],
   activeForecastIndex: 0,
-  districtRiskData:    {},          // name → {risk_score, risk_level, rainfall_7d_mm}
-  districtForecasts:   {},          // name → list of 7 days forecast
-  meshPrimitive:       null,
-  wireframePrimitive:  null,
+  districtRiskData: {},          // name → {risk_score, risk_level, rainfall_7d_mm}
+  districtForecasts: {},          // name → list of 7 days forecast
+  meshPrimitive: null,
+  wireframePrimitive: null,
   precomputePollTimer: null,
-  clickHandler:        null,
-  historicalMode:      false,       // true when viewing a past date
-  historicalDate:      null,        // ISO date string when in historical mode
-  savedLiveForecasts:  null,        // snapshot of live districtForecasts
-  savedLiveRiskData:   null,        // snapshot of live districtRiskData
+  clickHandler: null,
+  historicalMode: false,       // true when viewing a past date
+  historicalDate: null,        // ISO date string when in historical mode
+  savedLiveForecasts: null,        // snapshot of live districtForecasts
+  savedLiveRiskData: null,        // snapshot of live districtRiskData
+  evacuationEntities: [],          // List of Cesium Entities for safe zones
+  evacuationData: [],          // JSON data from evacuation_points.json
+  showEvacuationPoints: false,      // UI toggle state
+  // Geolocation
+  myLocationActive: false,
+  myLocationEntity: null,        // Cesium entity for user's location pin
+  myLocationRingEntity: null,       // Cesium entity for pulsing accuracy ring
+  geoWatchId: null,        // navigator.geolocation watchPosition ID
 };
 
 // ══════════════════════════════════════════════════════════ INIT ══
@@ -40,7 +48,7 @@ async function init() {
     try {
       const r = await fetch('/api/config/cesium-token');
       if (r.ok) { const d = await r.json(); Cesium.Ion.defaultAccessToken = d.token || ''; }
-    } catch (_) {}
+    } catch (_) { }
   } else {
     Cesium.Ion.defaultAccessToken = window.__CESIUM_TOKEN__;
   }
@@ -52,7 +60,63 @@ async function init() {
   initToggles();
   initHistoricalDatePicker();
   await loadActivityLog();
+  await loadEvacuationPoints();
   startPrecomputePolling();
+
+  // Show last refresh time (from SW cache or set to now)
+  updateLastRefreshTime();
+}
+
+/** Update the "Last Refreshed" chip in the header */
+function updateLastRefreshTime() {
+  const el = document.getElementById('last-refresh-label');
+  if (!el) return;
+
+  // Try to read the timestamp stored by the Service Worker
+  if ('caches' in window) {
+    caches.open('floodguard-cache-v4').then(cache => {
+      cache.match('/__last_refresh_time__').then(resp => {
+        if (resp) {
+          resp.text().then(ts => {
+            const d = new Date(ts);
+            if (!isNaN(d)) {
+              el.textContent = formatRefreshTime(d);
+              return;
+            }
+          });
+        }
+        // No cached timestamp — set to now (first load)
+        setRefreshTimeNow();
+      });
+    }).catch(() => setRefreshTimeNow());
+  } else {
+    setRefreshTimeNow();
+  }
+}
+
+function setRefreshTimeNow() {
+  const el = document.getElementById('last-refresh-label');
+  if (el) el.textContent = formatRefreshTime(new Date());
+  // Also store it
+  if ('caches' in window) {
+    caches.open('floodguard-cache-v4').then(cache => {
+      cache.put(
+        new Request('/__last_refresh_time__'),
+        new Response(new Date().toISOString())
+      );
+    }).catch(() => { });
+  }
+}
+
+function formatRefreshTime(d) {
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function initHistoricalDatePicker() {
@@ -74,18 +138,18 @@ function initHistoricalDatePicker() {
 function initCesium() {
   try {
     const opts = {
-      baseLayerPicker:      true,
+      baseLayerPicker: true,
       navigationHelpButton: false,
-      sceneModePicker:      false,
-      homeButton:           false,
-      geocoder:             false,
-      fullscreenButton:     false,
-      timeline:             false,
-      animation:            false,
-      infoBox:              false,
-      selectionIndicator:   false,
-      skyBox:               false,
-      skyAtmosphere:        new Cesium.SkyAtmosphere(),
+      sceneModePicker: false,
+      homeButton: false,
+      geocoder: false,
+      fullscreenButton: false,
+      timeline: false,
+      animation: false,
+      infoBox: false,
+      selectionIndicator: false,
+      skyBox: false,
+      skyAtmosphere: new Cesium.SkyAtmosphere(),
     };
 
     if (Cesium.Ion.defaultAccessToken) {
@@ -94,8 +158,27 @@ function initCesium() {
 
     state.viewer = new Cesium.Viewer('cesium-container', opts);
 
-    // Show the globe for map layers, but hide sun/moon/atmosphere for clean UI
+    // Replace default Cesium Ion base layer with CartoDB dark tiles
+    // Uses the modern ImageryLayer constructor (addImageryProvider is deprecated)
+    try {
+      const cartoProvider = new Cesium.UrlTemplateImageryProvider({
+        url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        minimumLevel: 0,
+        maximumLevel: 18,
+        credit: 'Map tiles by Carto, under CC BY 3.0. Data by OpenStreetMap, under ODbL.'
+      });
+      const cartoLayer = new Cesium.ImageryLayer(cartoProvider);
+      // Remove default Ion imagery first, then add dark CartoDB
+      state.viewer.imageryLayers.removeAll();
+      state.viewer.imageryLayers.add(cartoLayer);
+      console.log('[CesiumJS] CartoDB dark base layer added successfully.');
+    } catch (e) {
+      console.warn('[CesiumJS] CartoDB tiles failed, keeping default imagery:', e);
+    }
+
+    // Show the globe, hide sun/moon/atmosphere for clean dark UI
     state.viewer.scene.globe.show = true;
+    state.viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#0a1628');
     if (state.viewer.scene.sun) state.viewer.scene.sun.show = false;
     if (state.viewer.scene.moon) state.viewer.scene.moon.show = false;
     if (state.viewer.scene.skyAtmosphere) state.viewer.scene.skyAtmosphere.show = false;
@@ -108,8 +191,8 @@ function initCesium() {
       destination: Cesium.Cartesian3.fromDegrees(80.7, 4.5, 880000),
       orientation: {
         heading: Cesium.Math.toRadians(0),
-        pitch:   Cesium.Math.toRadians(-65),
-        roll:    0,
+        pitch: Cesium.Math.toRadians(-65),
+        roll: 0,
       },
       duration: 3.5,
     });
@@ -241,24 +324,24 @@ function plotDistrictPin(lat, lon, name, surfaceHeight, score) {
     name: name,
     position: Cesium.Cartesian3.fromDegrees(lon, lat, surfaceHeight + 6000),
     label: {
-      text:                    `${name}\n${(score * 100).toFixed(0)}%`,
-      font:                    isSelected ? 'bold 12px Inter, sans-serif' : 'bold 10px Inter, sans-serif',
-      fillColor:               Cesium.Color.WHITE,
-      outlineColor:            isSelected ? Cesium.Color.fromCssColorString('#22d3ee') : Cesium.Color.fromCssColorString('#050d1a'),
-      outlineWidth:            isSelected ? 5 : 3,
-      style:                   Cesium.LabelStyle.FILL_AND_OUTLINE,
-      verticalOrigin:          Cesium.VerticalOrigin.BOTTOM,
-      pixelOffset:             new Cesium.Cartesian2(0, -4),
+      text: `${name}\n${(score * 100).toFixed(0)}%`,
+      font: isSelected ? 'bold 12px Inter, sans-serif' : 'bold 10px Inter, sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: isSelected ? Cesium.Color.fromCssColorString('#22d3ee') : Cesium.Color.fromCssColorString('#050d1a'),
+      outlineWidth: isSelected ? 5 : 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -4),
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      showBackground:          true,
-      backgroundColor:         isSelected ? Cesium.Color.fromCssColorString('#0f2d4a').withAlpha(0.9) : Cesium.Color.fromCssColorString('#0a1628').withAlpha(0.75),
-      backgroundPadding:       new Cesium.Cartesian2(8, 6),
+      showBackground: true,
+      backgroundColor: isSelected ? Cesium.Color.fromCssColorString('#0f2d4a').withAlpha(0.9) : Cesium.Color.fromCssColorString('#0a1628').withAlpha(0.75),
+      backgroundPadding: new Cesium.Cartesian2(8, 6),
     },
     point: {
-      pixelSize:                isSelected ? 9 : 6,
-      color:                    isSelected ? Cesium.Color.fromCssColorString('#22d3ee') : color,
-      outlineColor:             Cesium.Color.WHITE,
-      outlineWidth:             isSelected ? 2 : 1.5,
+      pixelSize: isSelected ? 9 : 6,
+      color: isSelected ? Cesium.Color.fromCssColorString('#22d3ee') : color,
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: isSelected ? 2 : 1.5,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     },
   }));
@@ -276,21 +359,21 @@ function plotDistrictDimPin(lat, lon, name) {
     name: name,
     position: Cesium.Cartesian3.fromDegrees(lon, lat, 2000),
     point: {
-      pixelSize:                5,
-      color:                    Cesium.Color.fromCssColorString('#475569'),
-      outlineColor:             Cesium.Color.fromCssColorString('#1e293b'),
-      outlineWidth:             1,
+      pixelSize: 5,
+      color: Cesium.Color.fromCssColorString('#475569'),
+      outlineColor: Cesium.Color.fromCssColorString('#1e293b'),
+      outlineWidth: 1,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     },
     label: {
-      text:                    name,
-      font:                    '9px Inter, sans-serif',
-      fillColor:               Cesium.Color.fromCssColorString('#94a3b8'),
-      outlineColor:            Cesium.Color.fromCssColorString('#050d1a'),
-      outlineWidth:            2,
-      style:                   Cesium.LabelStyle.FILL_AND_OUTLINE,
-      verticalOrigin:          Cesium.VerticalOrigin.BOTTOM,
-      pixelOffset:             new Cesium.Cartesian2(0, -6),
+      text: name,
+      font: '9px Inter, sans-serif',
+      fillColor: Cesium.Color.fromCssColorString('#94a3b8'),
+      outlineColor: Cesium.Color.fromCssColorString('#050d1a'),
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -6),
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     }
   }));
@@ -312,7 +395,7 @@ function highlightDistrict(name) {
 function flyToDistrict(name, lat, lon) {
   if (!state.viewer) return;
   const overlay = document.getElementById('district-label-overlay');
-  const label   = document.getElementById('district-flyto-label');
+  const label = document.getElementById('district-flyto-label');
   label.textContent = `📍 ${name}`;
   overlay.style.display = 'block';
   setTimeout(() => { overlay.style.display = 'none'; }, 3000);
@@ -321,8 +404,8 @@ function flyToDistrict(name, lat, lon) {
     destination: Cesium.Cartesian3.fromDegrees(lon, lat, 200000),
     orientation: {
       heading: Cesium.Math.toRadians(0),
-      pitch:   Cesium.Math.toRadians(-48),
-      roll:    0,
+      pitch: Cesium.Math.toRadians(-48),
+      roll: 0,
     },
     duration: 2.2,
   });
@@ -333,7 +416,7 @@ async function loadDistricts() {
   try {
     const resp = await fetch(`${API_BASE}/api/districts`);
     const data = await resp.json();
-    const sel  = document.getElementById('district-select');
+    const sel = document.getElementById('district-select');
     sel.innerHTML = '<option value="">Select district...</option>';
 
     for (const name of data.districts) {
@@ -365,21 +448,21 @@ async function loadDistricts() {
 
 // ═════════════════════════════════ PRECOMPUTE POLLING ══
 function startPrecomputePolling() {
-  const banner   = document.getElementById('header-precompute');
-  const fill     = document.getElementById('precompute-fill');
-  const label    = document.getElementById('precompute-label');
-  const chip     = document.getElementById('district-count-chip');
+  const banner = document.getElementById('header-precompute');
+  const fill = document.getElementById('precompute-fill');
+  const label = document.getElementById('precompute-label');
+  const chip = document.getElementById('district-count-chip');
   const readyCnt = document.getElementById('districts-ready-count');
 
   banner.style.display = 'flex';
-  chip.style.display   = 'flex';
+  chip.style.display = 'flex';
 
   async function poll() {
     try {
       // 1. Get today's computed scores
-      const r    = await fetch(`${API_BASE}/api/forecasts/today`);
+      const r = await fetch(`${API_BASE}/api/forecasts/today`);
       const data = await r.json();
-      const pct  = data.total > 0 ? (data.ready / data.total) * 100 : 0;
+      const pct = data.total > 0 ? (data.ready / data.total) * 100 : 0;
 
       fill.style.width = `${pct}%`;
       label.textContent = data.complete
@@ -392,7 +475,7 @@ function startPrecomputePolling() {
       for (const [name, forecastList] of Object.entries(data.districts)) {
         if (!state.districtForecasts[name]) {
           state.districtForecasts[name] = forecastList;
-          state.districtRiskData[name]  = forecastList[0];
+          state.districtRiskData[name] = forecastList[0];
           newlyAdded = true;
         }
       }
@@ -455,7 +538,7 @@ function openDistrictModal(name) {
 
   // Set header info
   document.getElementById('modal-district-name').textContent = name;
-  document.getElementById('modal-district-sub').textContent  =
+  document.getElementById('modal-district-sub').textContent =
     `Flood risk outlook for ${name} district, Sri Lanka`;
 
   // Show loading state
@@ -470,8 +553,31 @@ function openDistrictModal(name) {
   // Reset gauge
   updateModalGauge(null, null, null);
 
+  // Update Safe Zone
+  updateNearestSafeZone(name);
+
   // Load forecast
   loadDistrictForecast(name);
+}
+
+function updateNearestSafeZone(districtName) {
+  const el = document.getElementById('modal-safezone-text');
+  if (!el) return;
+
+  if (!state.evacuationData || state.evacuationData.length === 0) {
+    el.textContent = "Safe zone data not loaded.";
+    return;
+  }
+
+  const zones = state.evacuationData.filter(z => z.district === districtName);
+  if (zones.length > 0) {
+    // Just pick the first one matching the district
+    const z = zones[0];
+    el.innerHTML = `<strong>${z.name}</strong> (${z.type})<br><span style="font-size:9px; color:var(--text-muted)">Capacity: ~${z.capacity} people</span>`;
+  } else {
+    // Fallback if no exact district match
+    el.textContent = "No designated safe zone mapped for this district yet.";
+  }
 }
 
 function closeDistrictModal() {
@@ -483,7 +589,7 @@ async function loadDistrictForecast(name) {
     const r = await fetch(`${API_BASE}/api/forecast/${encodeURIComponent(name)}`);
     if (!r.ok) throw new Error('Forecast API error');
     const data = await r.json();
-    state.currentForecast    = data.forecast;
+    state.currentForecast = data.forecast;
     state.activeForecastIndex = 0;
 
     renderModalForecastList();
@@ -502,15 +608,15 @@ function renderModalForecastList() {
   const colors = { LOW: '#22c55e', MEDIUM: '#eab308', HIGH: '#f97316', EXTREME: '#ef4444' };
 
   state.currentForecast.forEach((day, idx) => {
-    const dt      = new Date(day.date);
+    const dt = new Date(day.date);
     const dateStr = dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     const dayName = idx === 0 ? 'Today' : dt.toLocaleDateString(undefined, { weekday: 'short' });
-    const pct     = (day.risk_score * 100).toFixed(0);
+    const pct = (day.risk_score * 100).toFixed(0);
 
     const row = document.createElement('div');
     row.className = `modal-forecast-item ${idx === 0 ? 'active' : ''}`;
-    row.id        = `mfi-${idx}`;
-    row.onclick   = () => selectForecastDay(idx);
+    row.id = `mfi-${idx}`;
+    row.onclick = () => selectForecastDay(idx);
     row.innerHTML = `
       <span class="mfi-date">${dateStr}</span>
       <span class="mfi-day">${dayName}</span>
@@ -547,13 +653,13 @@ function selectForecastDay(idx) {
 
 function updateModalGauge(score, level, district) {
   const arcLen = 251;
-  const arc    = document.getElementById('modal-gauge-arc');
+  const arc = document.getElementById('modal-gauge-arc');
   const needle = document.getElementById('modal-gauge-needle');
-  const scoreEl= document.getElementById('modal-gauge-score');
-  const labelEl= document.getElementById('modal-gauge-label');
-  const badge  = document.getElementById('modal-risk-badge');
+  const scoreEl = document.getElementById('modal-gauge-score');
+  const labelEl = document.getElementById('modal-gauge-label');
+  const badge = document.getElementById('modal-risk-badge');
 
-  const colors = { LOW:'#22c55e', MEDIUM:'#eab308', HIGH:'#f97316', EXTREME:'#ef4444' };
+  const colors = { LOW: '#22c55e', MEDIUM: '#eab308', HIGH: '#f97316', EXTREME: '#ef4444' };
 
   if (score === null) {
     arc.style.strokeDashoffset = arcLen;
@@ -563,8 +669,8 @@ function updateModalGauge(score, level, district) {
     scoreEl.textContent = '—';
     scoreEl.style.color = 'var(--text-primary)';
     labelEl.textContent = district || 'NO DATA';
-    badge.textContent   = 'LOADING';
-    badge.className     = 'risk-badge modal-risk-badge';
+    badge.textContent = 'LOADING';
+    badge.className = 'risk-badge modal-risk-badge';
     return;
   }
 
@@ -572,7 +678,7 @@ function updateModalGauge(score, level, district) {
   arc.style.stroke = colors[level] || '#22d3ee';
 
   const angle = -180 + score * 180;
-  const rad   = angle * Math.PI / 180;
+  const rad = angle * Math.PI / 180;
   const cx = 100, cy = 100, r = 80;
   needle.setAttribute('cx', cx + r * Math.cos(rad));
   needle.setAttribute('cy', cy + r * Math.sin(rad));
@@ -582,7 +688,7 @@ function updateModalGauge(score, level, district) {
   labelEl.textContent = district || '';
 
   badge.textContent = level;
-  badge.className   = `risk-badge modal-risk-badge ${level}`;
+  badge.className = `risk-badge modal-risk-badge ${level}`;
 }
 
 // ═══════════════════════════════════════ WHAT-IF MODAL ══
@@ -614,10 +720,10 @@ async function loadModelCard() {
     document.getElementById('model-version-label').textContent =
       `${versionText} | LB ${m.opt_lb_score?.toFixed(5) ?? '—'}`;
     document.getElementById('stat-pipeline').textContent = m.base_pipeline ?? '—';
-    document.getElementById('stat-mae').textContent      = m.oof_mae?.toFixed(5) ?? '—';
-    document.getElementById('stat-ev').textContent       = m.oof_ev?.toFixed(5) ?? '—';
-    document.getElementById('stat-lb').textContent       = m.opt_lb_score?.toFixed(5) ?? '—';
-    document.getElementById('stat-feats').textContent    = `${m.n_total_features} cols`;
+    document.getElementById('stat-mae').textContent = m.oof_mae?.toFixed(5) ?? '—';
+    document.getElementById('stat-ev').textContent = m.oof_ev?.toFixed(5) ?? '—';
+    document.getElementById('stat-lb').textContent = m.opt_lb_score?.toFixed(5) ?? '—';
+    document.getElementById('stat-feats').textContent = `${m.n_total_features} cols`;
     const d = new Date(m.training_date);
     document.getElementById('stat-date').textContent = isNaN(d) ? '—' : d.toLocaleDateString();
   } catch (err) {
@@ -627,7 +733,7 @@ async function loadModelCard() {
 
 // ════════════════════════════════════════════════════ SLIDERS ══
 function initSliders() {
-  const rainfall   = document.getElementById('rainfall-slider');
+  const rainfall = document.getElementById('rainfall-slider');
   const inundation = document.getElementById('inundation-slider');
 
   const update = (el, displayId, fmt) => {
@@ -640,11 +746,11 @@ function initSliders() {
     update(rainfall, 'rainfall-value', v => `${v} mm`));
   inundation.addEventListener('input', () =>
     update(inundation, 'inundation-value',
-      v => v >= 1000 ? `${(v/1000).toFixed(1)}k sqm` : `${v} sqm`));
+      v => v >= 1000 ? `${(v / 1000).toFixed(1)}k sqm` : `${v} sqm`));
 
-  update(rainfall,   'rainfall-value',   v => `${v} mm`);
+  update(rainfall, 'rainfall-value', v => `${v} mm`);
   update(inundation, 'inundation-value',
-    v => v >= 1000 ? `${(v/1000).toFixed(1)}k sqm` : `${v} sqm`);
+    v => v >= 1000 ? `${(v / 1000).toFixed(1)}k sqm` : `${v} sqm`);
 }
 
 // ════════════════════════════════════════════════ TOGGLES ══
@@ -656,7 +762,7 @@ function initToggles() {
         .forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       if (field === 'flood_occurrence') state.flood_occurrence = btn.dataset.value;
-      if (field === 'is_good_to_live')  state.is_good_to_live  = btn.dataset.value;
+      if (field === 'is_good_to_live') state.is_good_to_live = btn.dataset.value;
     });
   });
 
@@ -694,27 +800,27 @@ async function runPrediction() {
   const district = state.selectedDistrict;
   if (!district) { alert('Please select a district first.'); return; }
 
-  const btnText   = document.getElementById('btn-text');
+  const btnText = document.getElementById('btn-text');
   const btnLoader = document.getElementById('btn-loader');
-  const btn       = document.getElementById('predict-btn');
-  btnText.style.display   = 'none';
+  const btn = document.getElementById('predict-btn');
+  btnText.style.display = 'none';
   btnLoader.style.display = 'block';
   btn.disabled = true;
 
   const payload = {
     district,
-    rainfall_7d_mm:                parseFloat(document.getElementById('rainfall-slider').value),
-    inundation_area_sqm:           parseFloat(document.getElementById('inundation-slider').value),
+    rainfall_7d_mm: parseFloat(document.getElementById('rainfall-slider').value),
+    inundation_area_sqm: parseFloat(document.getElementById('inundation-slider').value),
     flood_occurrence_current_event: state.flood_occurrence,
-    is_good_to_live:                state.is_good_to_live,
-    reason_not_good_to_live:        document.getElementById('reason-select').value,
+    is_good_to_live: state.is_good_to_live,
+    reason_not_good_to_live: document.getElementById('reason-select').value,
   };
 
   try {
     const resp = await fetch(`${API_BASE}/api/predict`, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload),
+      body: JSON.stringify(payload),
     });
 
     if (!resp.ok) {
@@ -758,7 +864,7 @@ async function runPrediction() {
     console.error('[Predict] Error:', err);
     alert('Failed to connect to the prediction API. Is the server running?');
   } finally {
-    btnText.style.display   = 'inline';
+    btnText.style.display = 'inline';
     btnLoader.style.display = 'none';
     btn.disabled = false;
   }
@@ -769,19 +875,19 @@ function showWhatIfResult(result, district) {
   panel.style.display = 'block';
   panel.classList.add('fade-in');
 
-  const score  = result.risk_score;
-  const level  = result.risk_level;
+  const score = result.risk_score;
+  const level = result.risk_level;
   const arcLen = 251;
-  const colors = { LOW:'#22c55e', MEDIUM:'#eab308', HIGH:'#f97316', EXTREME:'#ef4444' };
+  const colors = { LOW: '#22c55e', MEDIUM: '#eab308', HIGH: '#f97316', EXTREME: '#ef4444' };
 
   // Mini gauge
-  const arc    = document.getElementById('whatif-gauge-arc');
+  const arc = document.getElementById('whatif-gauge-arc');
   const needle = document.getElementById('whatif-gauge-needle');
   arc.style.strokeDashoffset = arcLen - (score * arcLen);
   arc.style.stroke = colors[level] || '#22d3ee';
 
   const angle = -180 + score * 180;
-  const rad   = angle * Math.PI / 180;
+  const rad = angle * Math.PI / 180;
   needle.setAttribute('cx', 100 + 80 * Math.cos(rad));
   needle.setAttribute('cy', 100 + 80 * Math.sin(rad));
 
@@ -790,7 +896,7 @@ function showWhatIfResult(result, district) {
 
   const badge = document.getElementById('whatif-risk-badge');
   badge.textContent = level;
-  badge.className   = `risk-badge ${level}`;
+  badge.className = `risk-badge ${level}`;
 
   document.getElementById('whatif-result-district').textContent = `${district} — Simulated scenario`;
 
@@ -813,19 +919,19 @@ async function loadActivityLog() {
     if (!r.ok) return;
     const data = await r.json();
     data.predictions.forEach(row => appendLogRow(row, true));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 function appendLogRow(result, prepend = false) {
-  const body  = document.getElementById('log-body');
+  const body = document.getElementById('log-body');
   const empty = body.querySelector('.log-empty');
   if (empty) empty.remove();
 
-  const ts      = result.timestamp
+  const ts = result.timestamp
     ? new Date(result.timestamp).toLocaleTimeString()
     : new Date().toLocaleTimeString();
-  const score   = result.risk_score ?? result.score ?? '—';
-  const level   = result.risk_level ?? '—';
+  const score = result.risk_score ?? result.score ?? '—';
+  const level = result.risk_level ?? '—';
   const latency = result.latency_ms ?? '—';
   const hasWarn = result.has_warnings || (result.warnings?.length > 0);
 
@@ -848,13 +954,13 @@ function appendLogRow(result, prepend = false) {
 function exportLog() {
   const rows = state.logRows;
   if (!rows.length) { alert('No data to export.'); return; }
-  const headers = ['timestamp','district','rainfall_7d_mm','risk_score','risk_level','latency_ms'];
+  const headers = ['timestamp', 'district', 'rainfall_7d_mm', 'risk_score', 'risk_level', 'latency_ms'];
   const csv = [headers.join(',')].concat(
     rows.map(r => headers.map(h => JSON.stringify(r[h] ?? '')).join(','))
   ).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), { href: url, download: 'floodguard_log.csv' });
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'floodguard_log.csv' });
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -864,11 +970,11 @@ async function submitFeedback(type) {
   if (!state.lastPredictionId) return;
   try {
     await fetch(`${API_BASE}/api/feedback`, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ prediction_id: state.lastPredictionId, feedback_type: type }),
+      body: JSON.stringify({ prediction_id: state.lastPredictionId, feedback_type: type }),
     });
-    const id  = type === 'accurate' ? 'btn-thumbup' : 'btn-thumbdown';
+    const id = type === 'accurate' ? 'btn-thumbup' : 'btn-thumbdown';
     const btn = document.getElementById(id);
     btn.style.transform = 'scale(1.4)';
     setTimeout(() => btn.style.transform = '', 500);
@@ -880,24 +986,24 @@ async function handleBatchUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
 
-  const text    = await file.text();
-  const lines   = text.trim().split('\n');
+  const text = await file.text();
+  const lines = text.trim().split('\n');
   if (lines.length < 2) { alert('CSV must have at least a header and one data row.'); return; }
 
   const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-  const rows    = [];
+  const rows = [];
   for (let i = 1; i < lines.length; i++) {
     const vals = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-    const obj  = {};
+    const obj = {};
     headers.forEach((h, idx) => { obj[h] = vals[idx] ?? ''; });
     if (!obj.district) continue;
     rows.push({
-      district:                       obj.district,
-      rainfall_7d_mm:                 parseFloat(obj.rainfall_7d_mm) || 50,
-      inundation_area_sqm:            parseFloat(obj.inundation_area_sqm) || 0,
+      district: obj.district,
+      rainfall_7d_mm: parseFloat(obj.rainfall_7d_mm) || 50,
+      inundation_area_sqm: parseFloat(obj.inundation_area_sqm) || 0,
       flood_occurrence_current_event: obj.flood_occurrence_current_event || 'No',
-      is_good_to_live:                obj.is_good_to_live || 'Yes',
-      reason_not_good_to_live:        obj.reason_not_good_to_live || 'None',
+      is_good_to_live: obj.is_good_to_live || 'Yes',
+      reason_not_good_to_live: obj.reason_not_good_to_live || 'None',
     });
   }
 
@@ -905,9 +1011,9 @@ async function handleBatchUpload(event) {
 
   try {
     const resp = await fetch(`${API_BASE}/api/predict/batch`, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ rows }),
+      body: JSON.stringify({ rows }),
     });
     const data = await resp.json();
     data.results.forEach(r => { if (r.risk_score !== undefined) appendLogRow(r); });
@@ -921,7 +1027,7 @@ async function handleBatchUpload(event) {
 // ═════════════════════════════════ HISTORICAL SIMULATION ══
 async function runHistoricalSimulation() {
   const dateInput = document.getElementById('historical-date');
-  const dateVal   = dateInput?.value;
+  const dateVal = dateInput?.value;
   if (!dateVal) {
     alert('Please select a date first.');
     return;
@@ -929,18 +1035,18 @@ async function runHistoricalSimulation() {
 
   // Validate it's a past date
   const selected = new Date(dateVal);
-  const today    = new Date();
+  const today = new Date();
   today.setHours(0, 0, 0, 0);
   if (selected >= today) {
     alert('Please select a past date for historical simulation.');
     return;
   }
 
-  const btn       = document.getElementById('historical-btn');
-  const btnText   = document.getElementById('hist-btn-text');
+  const btn = document.getElementById('historical-btn');
+  const btnText = document.getElementById('hist-btn-text');
   const btnLoader = document.getElementById('hist-btn-loader');
   btn.disabled = true;
-  btnText.style.display   = 'none';
+  btnText.style.display = 'none';
   btnLoader.style.display = 'block';
 
   // Show loading overlay on the map
@@ -967,18 +1073,18 @@ async function runHistoricalSimulation() {
     // Save current live forecasts so we can restore later
     if (!state.historicalMode) {
       state.savedLiveForecasts = JSON.parse(JSON.stringify(state.districtForecasts));
-      state.savedLiveRiskData  = JSON.parse(JSON.stringify(state.districtRiskData));
+      state.savedLiveRiskData = JSON.parse(JSON.stringify(state.districtRiskData));
     }
 
     // Inject historical results into districtForecasts (as single-day arrays)
     for (const [name, result] of Object.entries(data.districts)) {
       state.districtForecasts[name] = [{
-        date:           result.date,
+        date: result.date,
         rainfall_7d_mm: result.rainfall_7d_mm,
-        risk_score:     result.risk_score,
-        risk_level:     result.risk_level,
-        cached:         false,
-        source:         'historical',
+        risk_score: result.risk_score,
+        risk_level: result.risk_level,
+        cached: false,
+        source: 'historical',
       }];
       state.districtRiskData[name] = state.districtForecasts[name][0];
     }
@@ -1030,7 +1136,7 @@ async function runHistoricalSimulation() {
     const loadingOverlay = document.getElementById('hist-loading-overlay');
     if (loadingOverlay) loadingOverlay.remove();
 
-    btnText.style.display   = 'inline';
+    btnText.style.display = 'inline';
     btnLoader.style.display = 'none';
     btn.disabled = false;
   }
@@ -1042,9 +1148,9 @@ function returnToLive() {
   // Restore saved live forecasts
   if (state.savedLiveForecasts) {
     state.districtForecasts = state.savedLiveForecasts;
-    state.districtRiskData  = state.savedLiveRiskData;
+    state.districtRiskData = state.savedLiveRiskData;
     state.savedLiveForecasts = null;
-    state.savedLiveRiskData  = null;
+    state.savedLiveRiskData = null;
   }
 
   state.historicalMode = false;
@@ -1073,6 +1179,199 @@ function returnToLive() {
   }
 
   console.log('[Historical] Returned to live mode.');
+}
+
+// ════════════════════════════════════════════ EVACUATION POINTS ══
+async function loadEvacuationPoints() {
+  try {
+    const resp = await fetch('/static/evacuation_points.json');
+    if (!resp.ok) return;
+    state.evacuationData = await resp.json();
+  } catch (err) {
+    console.warn('[Evacuation] Failed to load evacuation points:', err);
+  }
+}
+
+function toggleEvacuationPoints(show) {
+  state.showEvacuationPoints = show;
+
+  if (!state.viewer) return;
+
+  // If turning off, remove all entities
+  if (!show) {
+    state.evacuationEntities.forEach(e => state.viewer.entities.remove(e));
+    state.evacuationEntities = [];
+    return;
+  }
+
+  // If turning on, render them
+  const colors = {
+    'School': '#3b82f6',
+    'Temple': '#f59e0b',
+    'Stadium': '#10b981',
+    'default': '#22d3ee'
+  };
+
+  state.evacuationData.forEach(pt => {
+    const colorStr = colors[pt.type] || colors['default'];
+
+    const entity = state.viewer.entities.add({
+      name: pt.name,
+      position: Cesium.Cartesian3.fromDegrees(pt.lon, pt.lat, pt.elevation_m || 20),
+      point: {
+        pixelSize: 8,
+        color: Cesium.Color.fromCssColorString(colorStr),
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 2,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      label: {
+        text: `🛡️ ${pt.name}`,
+        font: '10px Inter, sans-serif',
+        fillColor: Cesium.Color.WHITE,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 2,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -10),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        showBackground: true,
+        backgroundColor: Cesium.Color.fromCssColorString('rgba(5,13,26,0.8)'),
+        backgroundPadding: new Cesium.Cartesian2(6, 4)
+      }
+    });
+    state.evacuationEntities.push(entity);
+  });
+}
+
+// ════════════════════════════════════════════════════ MY LOCATION ══
+
+function toggleMyLocation() {
+  const btn = document.getElementById('my-location-btn');
+
+  if (state.myLocationActive) {
+    // ── Turn OFF ──
+    stopMyLocation();
+    btn.classList.remove('active');
+    return;
+  }
+
+  if (!('geolocation' in navigator)) {
+    alert('Geolocation is not supported by your browser.');
+    return;
+  }
+
+  btn.classList.add('active');
+  state.myLocationActive = true;
+
+  // Get initial position and fly to it
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      plotMyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+      flyToMyLocation(pos.coords.latitude, pos.coords.longitude);
+    },
+    err => {
+      console.warn('[GeoLocation] Error:', err.message);
+      alert('Could not access your location. Please allow location permissions.');
+      stopMyLocation();
+      btn.classList.remove('active');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+
+  // Continuously watch for location changes
+  state.geoWatchId = navigator.geolocation.watchPosition(
+    pos => {
+      plotMyLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+    },
+    err => {
+      console.warn('[GeoLocation] Watch error:', err.message);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+  );
+}
+
+function stopMyLocation() {
+  state.myLocationActive = false;
+
+  if (state.geoWatchId !== null) {
+    navigator.geolocation.clearWatch(state.geoWatchId);
+    state.geoWatchId = null;
+  }
+  if (state.myLocationEntity && state.viewer) {
+    state.viewer.entities.remove(state.myLocationEntity);
+    state.myLocationEntity = null;
+  }
+  if (state.myLocationRingEntity && state.viewer) {
+    state.viewer.entities.remove(state.myLocationRingEntity);
+    state.myLocationRingEntity = null;
+  }
+}
+
+function plotMyLocation(lat, lon, accuracy) {
+  if (!state.viewer) return;
+
+  // Remove previous entities
+  if (state.myLocationEntity) state.viewer.entities.remove(state.myLocationEntity);
+  if (state.myLocationRingEntity) state.viewer.entities.remove(state.myLocationRingEntity);
+
+  // Accuracy ring radius (clamp between 50m and 2000m for visibility)
+  const ringRadius = Math.max(50, Math.min(accuracy || 100, 2000));
+
+  // Blue accuracy circle on the ground
+  state.myLocationRingEntity = state.viewer.entities.add({
+    name: '_my_location_ring',
+    position: Cesium.Cartesian3.fromDegrees(lon, lat),
+    ellipse: {
+      semiMinorAxis: ringRadius,
+      semiMajorAxis: ringRadius,
+      height: 0,
+      material: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.12)'),
+      outline: true,
+      outlineColor: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.4)'),
+      outlineWidth: 1,
+    }
+  });
+
+  // Bright blue dot
+  state.myLocationEntity = state.viewer.entities.add({
+    name: '_my_location',
+    position: Cesium.Cartesian3.fromDegrees(lon, lat, 200),
+    point: {
+      pixelSize: 12,
+      color: Cesium.Color.fromCssColorString('#3b82f6'),
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 3,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    },
+    label: {
+      text: 'You are here',
+      font: 'bold 11px Inter, sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.fromCssColorString('#050d1a'),
+      outlineWidth: 3,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -12),
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      showBackground: true,
+      backgroundColor: Cesium.Color.fromCssColorString('rgba(59, 130, 246, 0.85)'),
+      backgroundPadding: new Cesium.Cartesian2(8, 5),
+    }
+  });
+}
+
+function flyToMyLocation(lat, lon) {
+  if (!state.viewer) return;
+  state.viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat, 50000),
+    orientation: {
+      heading: Cesium.Math.toRadians(0),
+      pitch: Cesium.Math.toRadians(-55),
+      roll: 0,
+    },
+    duration: 2.5,
+  });
 }
 
 // ════════════════════════════════════════════════════ START ══

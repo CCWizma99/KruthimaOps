@@ -11,6 +11,7 @@
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
+  <link rel="manifest" href="/static/manifest.json" />
 </head>
 <body>
 
@@ -37,6 +38,10 @@
       <span class="status-dot"></span>
       <span id="model-version-label">Loading model...</span>
     </div>
+    <div class="status-chip refresh-chip" id="refresh-chip" title="Last time data was synced from the server">
+      <span class="refresh-icon">🔄</span>
+      <span id="last-refresh-label">—</span>
+    </div>
     <div class="status-chip live-chip">
       <span class="pulse-dot"></span>
       <span>LIVE</span>
@@ -56,6 +61,18 @@
         <select id="district-select" class="styled-select">
           <option value="">Select district...</option>
         </select>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="panel-section">
+      <label class="field-label">🗺️ Map Layers</label>
+      <div class="toggle-row" style="margin-top: 8px;">
+        <label class="toggle-checkbox">
+          <input type="checkbox" id="toggle-evacuation-points" onchange="toggleEvacuationPoints(this.checked)" style="margin-right: 8px;">
+          Show Safe Zones
+        </label>
       </div>
     </div>
 
@@ -159,6 +176,14 @@
       <span id="district-flyto-label"></span>
     </div>
 
+    <!-- My Location button -->
+    <button class="my-location-btn" id="my-location-btn" onclick="toggleMyLocation()" title="Show my location">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+      </svg>
+    </button>
+
     <!-- Click hint -->
     <div class="map-click-hint" id="map-click-hint">
       Click a district tower to view its forecast
@@ -245,6 +270,10 @@
       <div class="modal-section-label">🤖 AI Safety Briefing</div>
       <div class="modal-briefing-text" id="modal-briefing-text">
         Run a prediction or select a forecast day to receive an AI-generated safety advisory.
+      </div>
+      <div class="modal-section-label" style="margin-top: 8px;">🛡️ Nearest Safe Zone</div>
+      <div class="modal-briefing-text" id="modal-safezone-text" style="color: var(--accent-cyan); font-weight: 500;">
+        Select a district to view the nearest safe zone.
       </div>
       <div class="modal-warnings" id="modal-warnings" style="display:none"></div>
       <div class="modal-feedback-row" id="modal-feedback-row" style="display:none">
@@ -354,6 +383,19 @@
 
 </div>
 
-<script src="/static/app.js?v=1.1.0"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        console.log('[ServiceWorker] Registration successful with scope: ', reg.scope);
+        // Force the new SW to take over immediately
+        reg.update();
+      }).catch(err => {
+        console.warn('[ServiceWorker] Registration failed: ', err);
+      });
+    });
+  }
+</script>
+<script src="/static/app.js?v=1.2.0"></script>
 </body>
 </html>
