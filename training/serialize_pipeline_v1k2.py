@@ -51,7 +51,7 @@ warnings.filterwarnings("ignore")
 # PATHS
 # ============================================================
 DATA_DIR    = "data"
-OUTPUT_DIR  = os.path.join("production", "models", "prod_v1000")
+OUTPUT_DIR  = os.path.join("production", "models", "prod_v1k.2")
 DIST_REF    = os.path.join("production", "data", "district_reference.json")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(os.path.dirname(DIST_REF), exist_ok=True)
@@ -60,11 +60,11 @@ os.makedirs(os.path.dirname(DIST_REF), exist_ok=True)
 # CONFIGURATION (same as v703)
 # ============================================================
 SEED       = 42         # Single seed for speed. Change to list for full mode.
-USE_PSEUDO = True
+USE_PSEUDO = False
 N_FOLDS    = 5
 SMOOTHING            = 10
 SMOOTHING_COMPOSITE  = 15
-c_mae, c_rmse, c_ev  = 0.539328, 1.152263, 0.048467
+c_mae, c_rmse, c_ev  = 0.539328, 1.152263, 0.500000
 
 MODEL_NAMES = [
     "XGB-MAE-1 (d7)",
@@ -272,7 +272,23 @@ def engineer_features(df, dist_elev_std, lc_inund_mean, comb_inund_mean, soil_ma
     df["terrain_veg_risk"]            = df["terrain_roughness_index"] * (1.0 - df["ndvi_qmap"].clip(-1, 1))
     df["flood_pressure"]              = df["extreme_weather_index"] * df["seasonal_index"].clip(lower=0)
     df["is_repeat_flood_zone"]        = (df["historical_flood_count"] > 2).astype(int)
+
     df["rain_spike_ratio"]            = df["rainfall_7d_mm"] / (df["monthly_rainfall_mm"] + 1e-6)
+    
+    # --- v1k.2 Engine Features ---
+    df['topographical_vulnerability'] = df['elevation_m'] / (df['distance_to_river_m'] + 1.0)
+    
+    pop_density = np.expm1(df["population_density_per_km2_log1p"])
+    is_urban = (df['urban_rural'].astype(str).str.strip().str.lower() == 'urban').astype(int)
+    df['urban_runoff_intensity'] = df['rainfall_7d_mm'] * pop_density * is_urban
+    
+    soil_perm_map = {'Sandy': 3, 'Loamy': 2, 'Silty': 2, 'Clay': 1, 'Peaty': 1}
+    df['soil_permeability_score'] = df['soil_type'].astype(str).map(soil_perm_map).fillna(2)
+    
+    df['infrastructure_deficit_v2'] = df['infrastructure_score'] * pop_density
+    df['is_monsoon_peak'] = df['month'].isin([5, 6, 11, 12]).astype(int)
+    # -----------------------------
+
     df["confirmed_risk"]              = (
         (df["flood_occurrence_current_event"].astype(str).str.strip().str.lower() == "yes") &
         (df["is_good_to_live"].astype(str).str.strip().str.lower() == "no")
@@ -599,8 +615,8 @@ print("\n[STACK] Running L2 alpha grid search...")
 oof_meta = np.column_stack([oof_preds[m][real_mask] for m in MODEL_NAMES])
 tst_meta = np.column_stack([tst_preds[m] for m in MODEL_NAMES])
 
-best_alpha, best_score = 0.1, np.inf
-for alpha in [0.001, 0.01, 0.1, 1.0, 10.0]:
+best_alpha, best_score = 0.0, np.inf
+for alpha in [0.0, 0.0001, 0.001, 0.01]:
     oof_cv = np.zeros(len(original_y))
     for fold, (tr_l2, va_l2) in enumerate(gkf_l2.split(original_df, original_y, original_groups)):
         w_cv, b_cv = fit_metric_stacker(oof_meta[tr_l2], original_y[tr_l2], alpha=alpha)
@@ -754,8 +770,8 @@ with open(os.path.join(OUTPUT_DIR, "posthoc.json"), "w") as f:
 print("   posthoc.json saved.")
 
 metadata = {
-    'version':          'prod_v1000',
-    'base_pipeline':    'v1000',
+    'version':          'prod_v1k.2',
+    'base_pipeline':    'v1k.2',
     'seed':             SEED,
     'n_folds':          N_FOLDS,
     'training_date':    datetime.now().isoformat(),
