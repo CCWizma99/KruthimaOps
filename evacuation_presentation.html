@@ -296,6 +296,54 @@
         border: none;
     }
 
+    .live-core {
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        width: 14px; height: 14px; border-radius: 50%;
+        background: #0066cc; border: 2px solid white;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+    }
+    .live-pulse {
+        position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        width: 14px; height: 14px; border-radius: 50%;
+        background: rgba(0,102,204,0.45);
+        animation: livepulse 1.8s infinite;
+    }
+    @keyframes livepulse {
+        0% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; }
+        100% { transform: translate(-50%, -50%) scale(2.8); opacity: 0; }
+    }
+
+    .nav-idle {
+        color: #71839e; font-size: 0.88rem; line-height: 1.55;
+    }
+    .nav-mode-badge {
+        display: inline-block; padding: 4px 10px; border-radius: 999px;
+        font-size: 0.78rem; font-weight: 700; margin-bottom: 10px;
+    }
+    .nav-mode-badge.mode-online { background: #e3f7ee; color: #0a6b4f; }
+    .nav-mode-badge.mode-offline { background: #fff4e5; color: #8a5a00; }
+    .nav-target { font-weight: 700; color: #163a5f; font-size: 1rem; margin-bottom: 4px; }
+    .nav-metrics { color: #345; font-size: 0.9rem; margin-bottom: 10px; }
+    .nav-compass {
+        display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+        background: #fffaf2; border: 1px dashed #ffd9a6; border-radius: 10px; padding: 10px 12px;
+    }
+    .compass-arrow {
+        font-size: 1.7rem; color: #8a5a00; display: inline-block;
+        transition: transform 0.3s ease;
+    }
+    .compass-label { font-weight: 700; color: #8a5a00; font-size: 0.88rem; }
+    .nav-steps {
+        max-height: 170px; overflow-y: auto; display: flex; flex-direction: column;
+        gap: 6px; margin-bottom: 12px;
+    }
+    .nav-step {
+        font-size: 0.82rem; color: #345; background: #f7fbfe; border-radius: 8px;
+        padding: 6px 10px; border: 1px solid #e3eef8;
+    }
+    .nav-step-muted { color: #93a3b8; font-style: italic; }
+    .nav-go-btn { display: flex; width: 100%; text-decoration: none; }
+
     @media (max-width: 1024px) {
         .layout { grid-template-columns: 1fr; }
         #map { height: 460px; }
@@ -317,6 +365,7 @@
             <div class="map-toolbar">
                 <button class="btn ghost" id="btn-refresh">↻ Refresh</button>
                 <button class="btn ghost" id="btn-locate">📍 My Location</button>
+                <button class="btn ghost" id="btn-track">🛰️ Start Live Tracking</button>
                 <button class="btn ghost" id="btn-routes">🧭 Show routes</button>
                 <a class="btn positive" href="/api/export/svg">⬇ Download SVG</a>
                 <a class="btn primary" href="/api/export/package">📦 Offline Package</a>
@@ -338,6 +387,24 @@
         </div>
 
         <div class="sidebar">
+            <div class="card" id="nav-card">
+                <h2>🧭 Nearest Safe Route</h2>
+                <div class="nav-idle" id="nav-idle">
+                    Tap <strong>🛰️ Start Live Tracking</strong> above to get real-time directions to the nearest safe zone. Online, you'll get real road turn-by-turn walking directions. Offline, you'll get a straight-line distance and compass heading instead.
+                </div>
+                <div class="nav-active" id="nav-active" style="display:none;">
+                    <div class="nav-mode-badge" id="nav-mode-badge">—</div>
+                    <div class="nav-target" id="nav-target">—</div>
+                    <div class="nav-metrics" id="nav-metrics"></div>
+                    <div class="nav-compass" id="nav-compass" style="display:none;">
+                        <span class="compass-arrow" id="compass-arrow">➤</span>
+                        <span class="compass-label" id="compass-label"></span>
+                    </div>
+                    <div class="nav-steps" id="nav-steps"></div>
+                    <a class="btn primary nav-go-btn" id="btn-navigate" target="_blank" rel="noopener">📲 Open in Maps app</a>
+                </div>
+            </div>
+
             <div class="card">
                 <h2 id="form-title">📍 Add a point</h2>
                 <div class="coord-readout unset" id="coord-readout">No location selected yet — click the map.</div>
@@ -409,6 +476,16 @@
     let cachedPoints = [];
     let routesVisible = false;
 
+    // --- Live GPS tracking + nearest-safe-zone navigation state ---
+    let watchId = null;
+    let liveTracking = false;
+    let liveMarker = null;
+    let liveAccCircle = null;
+    let navLine = null;
+    let navArrowMarkers = [];
+    let lastCalcAt = 0;
+    let lastCalcLatLng = null;
+
     const fldType = document.getElementById('field-type');
     const fldLabel = document.getElementById('field-label');
     const fldDesc = document.getElementById('field-desc');
@@ -419,6 +496,7 @@
     const btnClear = document.getElementById('btn-clear');
     const btnRefresh = document.getElementById('btn-refresh');
     const btnLocate = document.getElementById('btn-locate');
+    const btnTrack = document.getElementById('btn-track');
     const btnRoutes = document.getElementById('btn-routes');
     const coordReadout = document.getElementById('coord-readout');
     const pointsList = document.getElementById('points-list');
@@ -428,6 +506,16 @@
     const formTitle = document.getElementById('form-title');
     const searchBox = document.getElementById('search-box');
     const searchResults = document.getElementById('search-results');
+    const navIdle = document.getElementById('nav-idle');
+    const navActive = document.getElementById('nav-active');
+    const navModeBadge = document.getElementById('nav-mode-badge');
+    const navTarget = document.getElementById('nav-target');
+    const navMetrics = document.getElementById('nav-metrics');
+    const navCompass = document.getElementById('nav-compass');
+    const compassArrow = document.getElementById('compass-arrow');
+    const compassLabelEl = document.getElementById('compass-label');
+    const navSteps = document.getElementById('nav-steps');
+    const btnNavigate = document.getElementById('btn-navigate');
 
     function colorFor(type) {
         return (type || '').toLowerCase().startsWith('safe') ? '#00b386' : '#ff6b6b';
@@ -814,6 +902,210 @@
         if (!searchResults.contains(e.target) && e.target !== searchBox) {
             searchResults.classList.remove('show');
         }
+    });
+
+    function haversineKm(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function bearingDeg(lat1, lon1, lat2, lon2) {
+        const phi1 = lat1 * Math.PI / 180;
+        const phi2 = lat2 * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const y = Math.sin(dLon) * Math.cos(phi2);
+        const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLon);
+        return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    function compassLabel(deg) {
+        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        return dirs[Math.round(deg / 45) % 8];
+    }
+
+    function isIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function navigateHref(lat, lng, label) {
+        if (isIOS()) return `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=w`;
+        return `geo:${lat},${lng}?q=${lat},${lng}(${encodeURIComponent(label || 'Safe Zone')})`;
+    }
+
+    function describeStep(step) {
+        const m = step.maneuver || {};
+        let action;
+        if (m.type === 'depart') action = 'Head out';
+        else if (m.type === 'arrive') action = 'Arrive at destination';
+        else if (m.modifier) action = `Turn ${m.modifier}`;
+        else action = 'Continue';
+        const street = step.name ? ` on ${step.name}` : '';
+        const dist = step.distance ? ` (${Math.round(step.distance)} m)` : '';
+        return `${action}${street}${dist}`;
+    }
+
+    async function fetchOsrmRoute(fromLat, fromLng, toLat, toLng) {
+        const url = `https://router.project-osrm.org/route/v1/foot/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson&steps=true`;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 6000);
+        try {
+            const res = await fetch(url, { signal: controller.signal });
+            if (!res.ok) throw new Error('OSRM request failed');
+            const data = await res.json();
+            if (!data.routes || !data.routes.length) throw new Error('No route found');
+            return data.routes[0];
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    function liveDivIcon() {
+        return L.divIcon({
+            className: 'leaflet-div-icon',
+            html: `<div style="position:relative;width:22px;height:22px;">
+                       <div class="live-pulse"></div><div class="live-core"></div>
+                   </div>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11]
+        });
+    }
+
+    function clearNavLine() {
+        if (navLine) { lmap.removeLayer(navLine); navLine = null; }
+        navArrowMarkers.forEach(m => lmap.removeLayer(m));
+        navArrowMarkers = [];
+    }
+
+    function drawStraightLine(fromLatLng, toLatLng) {
+        clearNavLine();
+        navLine = L.polyline([fromLatLng, toLatLng], {
+            color: '#8a5a00', weight: 3, opacity: 0.85, dashArray: '4 10'
+        }).addTo(lmap);
+    }
+
+    function drawRoadLine(coords) {
+        clearNavLine();
+        navLine = L.polyline(coords, { color: '#0066cc', weight: 5, opacity: 0.9 }).addTo(lmap);
+    }
+
+    function nearestSafeZone(lat, lng) {
+        const isSafe = p => (p.type || '').toLowerCase().startsWith('safe') && p.lat != null && p.lng != null;
+        const notClosed = p => !(p.status || '').toLowerCase().includes('closed');
+        let pool = cachedPoints.filter(p => isSafe(p) && notClosed(p));
+        if (!pool.length) pool = cachedPoints.filter(isSafe);
+        if (!pool.length) return null;
+        let best = null, bestDist = Infinity;
+        pool.forEach(p => {
+            const d = haversineKm(lat, lng, Number(p.lat), Number(p.lng));
+            if (d < bestDist) { bestDist = d; best = p; }
+        });
+        return { point: best, distanceKm: bestDist };
+    }
+
+    async function recalcNavigation(lat, lng) {
+        const nearest = nearestSafeZone(lat, lng);
+        if (!nearest) {
+            navIdle.style.display = 'block';
+            navActive.style.display = 'none';
+            navIdle.textContent = 'No safe zones with map coordinates yet — add one to enable navigation.';
+            return;
+        }
+        const { point: target, distanceKm } = nearest;
+
+        navIdle.style.display = 'none';
+        navActive.style.display = 'block';
+        navTarget.textContent = `→ ${target.label} (${target.type})`;
+        btnNavigate.href = navigateHref(target.lat, target.lng, target.label);
+
+        try {
+            const route = await fetchOsrmRoute(lat, lng, Number(target.lat), Number(target.lng));
+            const coords = route.geometry.coordinates.map(([lo, la]) => [la, lo]);
+            drawRoadLine(coords);
+
+            navModeBadge.textContent = '🟢 Online — real road route';
+            navModeBadge.className = 'nav-mode-badge mode-online';
+            const km = (route.distance / 1000).toFixed(2);
+            const mins = Math.round(route.duration / 60);
+            navMetrics.textContent = `${km} km · ~${mins} min walk`;
+            navCompass.style.display = 'none';
+
+            const steps = (route.legs && route.legs[0] && route.legs[0].steps) || [];
+            navSteps.innerHTML = steps.map(s => `<div class="nav-step">${describeStep(s)}</div>`).join('');
+        } catch (err) {
+            const brg = bearingDeg(lat, lng, Number(target.lat), Number(target.lng));
+            drawStraightLine([lat, lng], [Number(target.lat), Number(target.lng)]);
+
+            navModeBadge.textContent = '🟠 Offline — straight-line estimate';
+            navModeBadge.className = 'nav-mode-badge mode-offline';
+            navMetrics.textContent = `${distanceKm.toFixed(2)} km · straight-line distance`;
+            navCompass.style.display = 'flex';
+            compassArrow.style.transform = `rotate(${brg - 90}deg)`;
+            compassLabelEl.textContent = `${compassLabel(brg)} (${Math.round(brg)}°)`;
+            navSteps.innerHTML = '<div class="nav-step nav-step-muted">No road-routing connection — showing direct distance and compass bearing instead of turn-by-turn directions.</div>';
+        }
+    }
+
+    function onPositionUpdate(pos) {
+        const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+
+        if (!liveMarker) {
+            liveMarker = L.marker([lat, lng], { icon: liveDivIcon(), zIndexOffset: 1000 }).addTo(lmap);
+            liveAccCircle = L.circle([lat, lng], { radius: accuracy || 30, color: '#0066cc', weight: 1, fillOpacity: 0.08 }).addTo(lmap);
+            lmap.setView([lat, lng], 16);
+        } else {
+            liveMarker.setLatLng([lat, lng]);
+            liveAccCircle.setLatLng([lat, lng]);
+            liveAccCircle.setRadius(accuracy || 30);
+        }
+
+        const now = Date.now();
+        const movedFar = !lastCalcLatLng || haversineKm(lat, lng, lastCalcLatLng[0], lastCalcLatLng[1]) > 0.03;
+        if (now - lastCalcAt > 8000 || movedFar) {
+            lastCalcAt = now;
+            lastCalcLatLng = [lat, lng];
+            recalcNavigation(lat, lng);
+        }
+    }
+
+    function onPositionError(err) {
+        console.error('geolocation error', err);
+        if (err.code === 1) {
+            alert('Location permission denied. Live tracking needs access to your location.');
+            stopTracking();
+        }
+    }
+
+    function startTracking() {
+        if (!navigator.geolocation) { alert('Geolocation is not available in this browser.'); return; }
+        liveTracking = true;
+        btnTrack.classList.add('active');
+        btnTrack.textContent = '⏹ Stop Live Tracking';
+        watchId = navigator.geolocation.watchPosition(onPositionUpdate, onPositionError, {
+            enableHighAccuracy: true, maximumAge: 5000, timeout: 15000
+        });
+    }
+
+    function stopTracking() {
+        liveTracking = false;
+        btnTrack.classList.remove('active');
+        btnTrack.textContent = '🛰️ Start Live Tracking';
+        if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+        if (liveMarker) { lmap.removeLayer(liveMarker); liveMarker = null; }
+        if (liveAccCircle) { lmap.removeLayer(liveAccCircle); liveAccCircle = null; }
+        clearNavLine();
+        navIdle.style.display = 'block';
+        navActive.style.display = 'none';
+        lastCalcAt = 0;
+        lastCalcLatLng = null;
+    }
+
+    btnTrack.addEventListener('click', () => {
+        if (liveTracking) stopTracking(); else startTracking();
     });
 
     initMap();
