@@ -161,6 +161,14 @@ def build_prediction_report_pdf(
         wordWrap="CJK",
     ))
     styles.add(ParagraphStyle(
+        name="AIComment",
+        parent=styles["BodyText"],
+        fontSize=9.2,
+        leading=12.8,
+        textColor=colors.HexColor("#0f172a"),
+        wordWrap="CJK",
+    ))
+    styles.add(ParagraphStyle(
         name="CellLabel",
         parent=styles["BodyText"],
         fontName="Helvetica-Bold",
@@ -269,6 +277,22 @@ def build_prediction_report_pdf(
 
     story.append(Paragraph("Risk Interpretation", styles["SectionTitle"]))
     story.append(Paragraph(escape(_risk_description(level)), styles["BodyClean"]))
+
+    ai_comment = _safe(prediction.get("ai_comment"), "")
+    if not ai_comment:
+        ai_comment = _risk_description(level)
+    story.append(Paragraph("AI Operational Comment", styles["SectionTitle"]))
+    ai_table = Table([[_p(ai_comment, styles["AIComment"])]], colWidths=[16.1 * cm])
+    ai_table.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#bae6fd")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f0f9ff")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    story.append(ai_table)
 
     story.append(Paragraph("Input Evidence Snapshot", styles["SectionTitle"]))
     inputs = [
