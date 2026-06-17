@@ -21,6 +21,7 @@ class PredictRequest(BaseModel):
     reason_not_good_to_live: str    = Field("None", description="Reason location is unsafe")
 
     # Optional overrides (auto-filled from district_reference if absent)
+    place_name:            Optional[str] = None
     latitude:              Optional[float] = None
     longitude:             Optional[float] = None
     elevation_m:           Optional[float] = None

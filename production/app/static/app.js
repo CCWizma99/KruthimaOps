@@ -13,7 +13,9 @@ const API_BASE = '';   // same origin
 const state = {
   viewer: null,
   districts: {},          // name → reference data
-  riskEntities: {},          // name → [entity, entity, …] for cleanup
+  riskEntities: {},
+  subdivisionEntities: [],
+  nationalViewActive: true,          // name → [entity, entity, …] for cleanup
   selectedDistrict: null,
   lastPredictionId: null,
   logRows: [],
@@ -256,12 +258,7 @@ function getInterpolatedColor(score, alpha) {
     g = 68;
     b = 68;
   }
-  return {
-    red: r,
-    green: g,
-    blue: b,
-    alpha: Math.round(alpha * 255)
-  };
+  return Cesium.Color.fromBytes(r, g, b, Math.round(alpha * 255));
 }
 
 /** Plot district pins on the map without the 3D surface mesh */
@@ -509,6 +506,8 @@ function startPrecomputePolling() {
 
 // ════════════════════════════════════════════ DISTRICT SELECT ══
 function selectDistrict(name) {
+  if (state.nationalViewActive) loadSubdivisions(name);
+
   state.selectedDistrict = name;
 
   // Sync dropdown
@@ -1376,3 +1375,214 @@ function flyToMyLocation(lat, lon) {
 
 // ════════════════════════════════════════════════════ START ══
 document.addEventListener('DOMContentLoaded', init);
+
+
+
+// ════════════════════════════════════════════════ DRILL DOWN ══
+
+async function loadSubdivisions(districtName) {
+  state.nationalViewActive = false;
+  
+  for (let key in state.riskEntities) {
+    state.riskEntities[key].forEach(ent => {
+      if (key === districtName) {
+         if (ent.polygon) {
+            ent.polygon.outline = true;
+            ent.polygon.outlineColor = Cesium.Color.WHITE;
+            ent.polygon.outlineWidth = 3;
+            ent.polygon.extrudedHeight = 500;
+            ent.polygon.material = ent.polygon.material.color.getValue().withAlpha(0.2);
+         }
+      } else {
+        if (ent.polygon && ent.polygon.material) {
+          ent.polygon.material.color = ent.polygon.material.color.getValue().withAlpha(0.05);
+        }
+      }
+      if (ent.label) ent.label.show = false;
+    });
+  }
+
+  let backBtn = document.getElementById('btn-back-national');
+  if (!backBtn) {
+    backBtn = document.createElement('button');
+    backBtn.id = 'btn-back-national';
+    backBtn.innerHTML = '⬅ Back to National View';
+    backBtn.style = 'position:absolute; top:20px; left:20px; z-index:999; padding:10px 16px; background:#1e293b; color:#fff; border:1px solid #334155; border-radius:8px; cursor:pointer; font-weight:bold; box-shadow:0 4px 12px rgba(0,0,0,0.5);';
+    backBtn.onclick = restoreNationalView;
+    document.body.appendChild(backBtn);
+  }
+  backBtn.style.display = 'block';
+
+  clearSubdivisions();
+
+  try {
+    const dateQuery = state.simulationDate ? `?date=${state.simulationDate}` : '';
+    const res = await fetch(`/api/predict/subdivisions/${districtName}${dateQuery}`);
+    const results = await res.json();
+    
+    results.forEach(sub => {
+       const scorePct = Math.round(sub.risk_score * 100);
+       const color = getRiskColor(sub.risk_score);
+       
+       const ent = state.viewer.entities.add({
+         position: Cesium.Cartesian3.fromDegrees(sub.lon, sub.lat, 1000),
+         label: {
+           text: `${sub.place_name}
+${scorePct}% Risk | ${sub.rainfall_7d_mm}mm Rain`,
+           font: 'bold 13px sans-serif',
+           fillColor: Cesium.Color.WHITE,
+           style: Cesium.LabelStyle.FILL,
+           pixelOffset: new Cesium.Cartesian2(0, -25),
+           backgroundColor: color.withAlpha(0.9),
+           showBackground: true,
+           backgroundPadding: new Cesium.Cartesian2(8, 6),
+           disableDepthTestDistance: Number.POSITIVE_INFINITY,
+           show: false // Hidden by default, shown on hover
+         },
+         point: {
+           pixelSize: 14,
+           color: color,
+           outlineColor: Cesium.Color.WHITE,
+           outlineWidth: 2,
+           disableDepthTestDistance: Number.POSITIVE_INFINITY
+         }
+       });
+       state.subdivisionEntities.push(ent);
+    });
+
+
+
+
+    // Add GeoJSON boundary lines for context
+    const dataSource = await Cesium.GeoJsonDataSource.load(`/static/subdivisions/${districtName}.geojson`);
+    
+    // Explicitly generate true Polylines from the polygon geometry
+    // This perfectly bypasses the Windows WebGL polygon outline bug!
+    state.subdivisionPolylines = [];
+    
+    dataSource.entities.values.forEach(entity => {
+      if (entity.polygon) {
+        const hierarchy = entity.polygon.hierarchy?.getValue(Cesium.JulianDate.now());
+        if (hierarchy) {
+            function extractRings(hier) {
+                const rings = [];
+                if (hier.positions && hier.positions.length > 0) {
+                    rings.push(hier.positions);
+                }
+                if (hier.holes) {
+                    hier.holes.forEach(hole => {
+                        rings.push(...extractRings(hole));
+                    });
+                }
+                return rings;
+            }
+            
+            const allRings = extractRings(hierarchy);
+            allRings.forEach(ring => {
+                if (ring.length > 0) {
+                    const closedRing = ring.concat([ring[0]]);
+                    const lineEnt = state.viewer.entities.add({
+                        polyline: {
+                            positions: closedRing,
+                            width: 3,
+                            material: Cesium.Color.WHITE.withAlpha(0.6),
+                            clampToGround: true
+                        }
+                    });
+                    state.subdivisionPolylines.push(lineEnt);
+                }
+            });
+            
+            // Hide the buggy polygon completely
+            entity.polygon.show = false;
+        }
+      }
+    });
+    
+    state.viewer.dataSources.add(dataSource);
+    state.subdivisionDataSource = dataSource;
+
+
+
+    // Auto-Zoom into the district
+
+    if (state.subdivisionEntities.length > 0) {
+      state.viewer.flyTo(state.subdivisionEntities, {
+        duration: 1.5,
+        offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-60), 60000)
+      });
+    }
+
+    // Attach Hover Handler if not present
+    if (!state.hoverHandler) {
+      state.hoverHandler = new Cesium.ScreenSpaceEventHandler(state.viewer.scene.canvas);
+      let lastHoveredEntity = null;
+      state.hoverHandler.setInputAction(function (movement) {
+        if (!state.nationalViewActive) {
+          const picked = state.viewer.scene.pick(movement.endPosition);
+          const isSubEntity = Cesium.defined(picked) && picked.id && state.subdivisionEntities.includes(picked.id);
+          
+          if (lastHoveredEntity && lastHoveredEntity !== (isSubEntity ? picked.id : null)) {
+              if (lastHoveredEntity.label) lastHoveredEntity.label.show = false;
+          }
+          
+          if (isSubEntity) {
+              if (picked.id.label) picked.id.label.show = true;
+              lastHoveredEntity = picked.id;
+          } else {
+              lastHoveredEntity = null;
+          }
+        }
+      }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+    }
+
+  } catch(e) {
+    console.error("Subdivisions fetch failed", e);
+  }
+}
+
+function clearSubdivisions() {
+  state.subdivisionEntities.forEach(ent => state.viewer.entities.remove(ent));
+  state.subdivisionEntities = [];
+  if (state.subdivisionDataSource) {
+    state.viewer.dataSources.remove(state.subdivisionDataSource);
+    state.subdivisionDataSource = null;
+  }
+  if (state.subdivisionPolylines) {
+    state.subdivisionPolylines.forEach(ent => state.viewer.entities.remove(ent));
+    state.subdivisionPolylines = [];
+  }
+}
+
+function restoreNationalView() {
+  state.nationalViewActive = true;
+  document.getElementById('btn-back-national').style.display = 'none';
+  clearSubdivisions();
+  
+  // Restore Colors
+  for (let key in state.riskEntities) {
+    state.riskEntities[key].forEach(ent => {
+      if (ent.polygon && ent.polygon.material) {
+        const data = state.districtRiskData[key];
+        if (data) {
+           ent.polygon.material = getInterpolatedColor(data.risk_score, 0.6);
+        }
+        ent.polygon.outline = false;
+        ent.polygon.extrudedHeight = undefined;
+      }
+      if (ent.label) ent.label.show = true;
+    });
+  }
+
+  // Fly back to national view
+  state.viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(80.7, 4.5, 880000),
+    orientation: {
+      heading: Cesium.Math.toRadians(0),
+      pitch: Cesium.Math.toRadians(-65),
+      roll: 0,
+    },
+    duration: 1.5,
+  });
+}
+

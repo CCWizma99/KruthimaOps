@@ -106,17 +106,17 @@ def infer(features_dict: dict) -> tuple[float, float]:
     
     # Dynamic calculation for HAND and Slope if possible
     if "hand_metric" not in row or "slope_deg" not in row:
-        lat = float(row.get("latitude", medians.get("latitude", 7.8731)))
-        lon = float(row.get("longitude", medians.get("longitude", 80.7718)))
-        dist = float(row.get("distance_to_river_m", medians.get("distance_to_river_m", 500.0)))
-        elev = float(row.get("elevation_m", medians.get("elevation_m", 10.0)))
+        lat = float(row.get("latitude") if row.get("latitude") is not None else medians.get("latitude", 7.8731))
+        lon = float(row.get("longitude") if row.get("longitude") is not None else medians.get("longitude", 80.7718))
+        dist = float(row.get("distance_to_river_m") if row.get("distance_to_river_m") is not None else medians.get("distance_to_river_m", 500.0))
+        elev = float(row.get("elevation_m") if row.get("elevation_m") is not None else medians.get("elevation_m", 10.0))
         
         hand, slope = _get_topography_metrics(lat, lon, dist, elev)
         if "hand_metric" not in row: row["hand_metric"] = hand
         if "slope_deg" not in row: row["slope_deg"] = slope
 
     for col in features:
-        if col not in row or pd.isna(row[col]):
+        if col not in row or pd.isna(row[col]) or row[col] is None:
             row[col] = medians.get(col, "missing" if col in cat_cols else 0.0)
 
     df = pd.DataFrame([row])
