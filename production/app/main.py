@@ -285,9 +285,30 @@ async def prediction_report(prediction_id: str):
     if not prediction:
         raise HTTPException(status_code=404, detail="Prediction ID not found in monitoring log.")
 
+    # Generate an AI operational comment for the PDF using the same briefing
+    # layer used by the live prediction flow. Gemini is used when configured;
+    # the briefing layer provides a deterministic fallback when the API key is
+    # unavailable so report generation still works during demos/CI.
+    ai_comment = ""
+    try:
+        report_features = {
+            "district": prediction.get("district"),
+            "rainfall_7d_mm": prediction.get("rainfall_7d") or 0.0,
+            "inundation_area_sqm": prediction.get("inundation_area") or 0.0,
+            "flood_occurrence_current_event": prediction.get("flood_occurrence") or "No",
+            "is_good_to_live": prediction.get("is_good_to_live") or "Yes",
+            "latitude": prediction.get("latitude"),
+            "longitude": prediction.get("longitude"),
+        }
+        ai_comment = brief(float(prediction.get("risk_score") or 0.0), report_features)
+    except Exception as exc:
+        logger.warning("[Report] AI comment generation failed: %s", exc)
+
+    prediction_with_ai = {**prediction, "ai_comment": ai_comment}
+
     try:
         pdf_bytes = build_prediction_report_pdf(
-            prediction=prediction,
+            prediction=prediction_with_ai,
             model_metadata=get_model_metadata(),
             metrics=get_metrics(),
         )
