@@ -427,7 +427,7 @@ async function loadDistricts() {
     // Fetch all district reference data in parallel
     const refs = await Promise.all(
       data.districts.map(name =>
-        fetch(${API_BASE}/api/district/)
+        fetch(`${API_BASE}/api/district/${encodeURIComponent(name)}`)
           .then(r => r.ok ? r.json() : null)
       )
     );
@@ -456,17 +456,17 @@ function startPrecomputePolling() {
   banner.style.display = 'flex';
   chip.style.display = 'flex';
 
-  const evtSource = new EventSource(${API_BASE}/api/forecasts/stream);
+  const evtSource = new EventSource(`${API_BASE}/api/forecasts/stream`);
 
   evtSource.onmessage = function(event) {
     try {
       const data = JSON.parse(event.data);
       const pct = data.total > 0 ? (data.ready / data.total) * 100 : 0;
 
-      fill.style.width = ${pct}%;
+      fill.style.width = `${pct}%`;
       label.textContent = (data.ready >= data.total)
-        ? All  risk profiles ready
-        : Computing district profiles… /;
+        ? `All ${data.total} risk profiles ready`
+        : `Computing district profiles… ${data.ready}/${data.total}`;
       readyCnt.textContent = data.ready;
 
       let newlyAdded = false;
@@ -490,7 +490,7 @@ function startPrecomputePolling() {
         setTimeout(() => {
           banner.style.display = 'none';
         }, 4000);
-        label.textContent = ✓ All  district risk profiles loaded;
+        label.textContent = `✓ All ${data.total} district risk profiles loaded`;
         evtSource.close();
       }
     } catch (e) {
@@ -741,11 +741,26 @@ function initSliders() {
     document.getElementById(displayId).textContent = fmt(el.value);
   };
 
-  rainfall.addEventListener('input', () =>
-    update(rainfall, 'rainfall-value', v => `${v} mm`));
-  inundation.addEventListener('input', () =>
+  rainfall.addEventListener('input', () => {
+    // Physics Guardrail: If rain > 150, inundation cannot be 0.
+    if (parseFloat(rainfall.value) > 150) {
+      if (parseFloat(inundation.value) < 5000) {
+        inundation.value = 5000;
+        update(inundation, 'inundation-value',
+          v => v >= 1000 ? `${(v / 1000).toFixed(1)}k sqm` : `${v} sqm`);
+      }
+    }
+    update(rainfall, 'rainfall-value', v => `${v} mm`);
+  });
+
+  inundation.addEventListener('input', () => {
+    // Physics Guardrail: If rain > 150, lock inundation minimum.
+    if (parseFloat(rainfall.value) > 150 && parseFloat(inundation.value) < 5000) {
+      inundation.value = 5000;
+    }
     update(inundation, 'inundation-value',
-      v => v >= 1000 ? `${(v / 1000).toFixed(1)}k sqm` : `${v} sqm`));
+      v => v >= 1000 ? `${(v / 1000).toFixed(1)}k sqm` : `${v} sqm`);
+  });
 
   update(rainfall, 'rainfall-value', v => `${v} mm`);
   update(inundation, 'inundation-value',

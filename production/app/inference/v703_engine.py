@@ -154,18 +154,15 @@ def _engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     )
     date_series = pd.to_datetime(df["generation_date"].fillna("2024-06-15"))
     df["month"]   = date_series.dt.month
-    df["is_yala"] = df["month"].isin([5, 6, 7, 8, 9]).astype(int)
-    df["is_maha"] = df["month"].isin([11, 12, 1]).astype(int)
     df["zone_code"] = df["district"].astype(str).map(lambda x: 1 if x in wet_d else 2)
-    df["monsoon_impact"] = (
-        df["rainfall_7d_mm"] * df["is_yala"] * (df["zone_code"] == 1).astype(int) +
-        df["rainfall_7d_mm"] * df["is_maha"] * (df["zone_code"] == 2).astype(int)
-    )
+    
+    # Dynamic monsoon surge replacing static month masks
+    df["rainfall_surge_ratio"] = df["rainfall_7d_mm"] / (df["monthly_rainfall_mm"] / 4.0 + 1.0)
+    df["monsoon_surge_impact"] = df["rainfall_surge_ratio"] * (df["zone_code"] == 1).astype(int)
     df["urban_runoff_potential"]   = df["rainfall_7d_mm"] * df["built_up_percent"].fillna(50) * (1.0 / (df["drainage_index"].fillna(0.5) + 1e-5))
     df["fluvial_risk_score_feat"]  = df["rainfall_7d_mm"] * (1.0 / (df["distance_to_river_m"].fillna(500) + 1.0))
     df["soil_infiltration"]        = df["soil_type"].astype(str).map(soil_map).fillna(0.4)
     df["soil_saturation_limit"]    = df["rainfall_7d_mm"] / (df["soil_infiltration"] + 0.1)
-    df["pseudo_twi"]               = np.log1p((df["distance_to_river_m"].fillna(500) + 1.0) / (df["elevation_m"].fillna(10).clip(lower=0.0) + 1.0))
     df["flatness_index"]           = df["district"].astype(str).map(dist_elev_std).fillna(df["elevation_m"].std() if len(df) > 1 else 10.0)
     df["in_cyclone_path"]          = df["district"].astype(str).map(lambda x: 1 if x in cyc_d else 0)
     df["cyclone_vulnerability"]    = df["in_cyclone_path"] * df["extreme_weather_index"].fillna(0)
