@@ -64,7 +64,7 @@ USE_PSEUDO = False
 N_FOLDS    = 5
 SMOOTHING            = 10
 SMOOTHING_COMPOSITE  = 15
-c_mae, c_rmse, c_ev  = 0.539328, 1.152263, 0.500000
+c_mae, c_rmse, c_ev  = 0.539328, 1.152263, 2.000000
 
 MODEL_NAMES = [
     "XGB-MAE-1 (d7)",
@@ -86,6 +86,32 @@ print("=" * 75)
 print("\n[LOAD] Loading data...")
 train_df = pd.read_csv("C:/KruthimaOps/data/train_v1002_desinventar.csv")
 train_df = train_df[train_df['is_synthetic'].isna()].reset_index(drop=True)
+
+# 1. Hot-Deck Impute Missing Coordinates using Place Name or District
+valid_coords = train_df.dropna(subset=['latitude', 'longitude'])
+place_coords = valid_coords.groupby('place_name')[['latitude', 'longitude']].median().to_dict('index')
+dist_coords = valid_coords.groupby('district')[['latitude', 'longitude']].median().to_dict('index')
+
+def impute_coords(row):
+    if pd.isna(row['latitude']) or pd.isna(row['longitude']):
+        p = row['place_name']
+        d = row['district']
+        if pd.notna(p) and p in place_coords:
+            row['latitude'] = place_coords[p]['latitude']
+            row['longitude'] = place_coords[p]['longitude']
+        elif pd.notna(d) and d in dist_coords:
+            row['latitude'] = dist_coords[d]['latitude']
+            row['longitude'] = dist_coords[d]['longitude']
+    return row
+
+train_df = train_df.apply(impute_coords, axis=1)
+
+# Clean: Drop rows that entirely lack physical spatial coordinates
+before_len = len(train_df)
+train_df = train_df.dropna(subset=['latitude', 'longitude']).reset_index(drop=True)
+print(f"   Rescued {(len(train_df) - (before_len - 406))} 'ghost' rows by hot-decking place/district.")
+print(f"   Dropped {before_len - len(train_df)} 'ghost' rows still missing coordinates.")
+
 test_df  = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
 for col in ["hand_metric", "slope_deg", "water_occurrence_pct"]:
     if col not in test_df.columns:
@@ -570,11 +596,12 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
 
     # Model 1: XGB-MAE-1 (d7)
     xgb_m1 = xgb.XGBRegressor(
-        n_estimators=4000, learning_rate=0.03, max_depth=7, min_child_weight=4,
-        subsample=0.85, colsample_bytree=0.6, colsample_bylevel=0.6,
-        reg_alpha=2.0, reg_lambda=4.0, gamma=0.1, max_delta_step=1,
-        objective="reg:absoluteerror", eval_metric="mae", tree_method="hist",
-        enable_categorical=False, early_stopping_rounds=100, random_state=SEED, n_jobs=-1
+        n_estimators=4000, learning_rate=0.03, max_depth=8, min_child_weight=1,
+        subsample=0.8, colsample_bytree=0.6,
+        reg_alpha=0.5, reg_lambda=1.0,
+        objective="reg:squarederror", eval_metric="rmse", tree_method="hist",
+        random_state=SEED, n_jobs=-1,
+        early_stopping_rounds=50
     )
     xgb_m1.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
 
@@ -582,7 +609,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
     cat_m1 = cb.CatBoostRegressor(
         iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=5.0,
         bagging_temperature=0.7, random_strength=2.0, border_count=254,
-        loss_function="MAE", eval_metric="MAE", task_type="CPU",
+        loss_function="RMSE", eval_metric="RMSE", task_type="CPU",
         random_seed=SEED, verbose=False
     )
     cat_m1.fit(X_tr_cat, y_tr, cat_features=cat_cols,
@@ -592,7 +619,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
     cat_m2 = cb.CatBoostRegressor(
         iterations=5000, learning_rate=0.03, depth=5, l2_leaf_reg=12.0,
         bagging_temperature=0.4, random_strength=5.0, border_count=254,
-        loss_function="MAE", eval_metric="MAE", task_type="CPU",
+        loss_function="RMSE", eval_metric="RMSE", task_type="CPU",
         random_seed=SEED + 1, verbose=False
     )
     cat_m2.fit(X_tr_cat, y_tr, cat_features=cat_cols,
@@ -610,10 +637,10 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
 
     # Model 5: LGB-MAE (d5)
     lgb_m1 = lgb.LGBMRegressor(
-        n_estimators=4000, learning_rate=0.03, num_leaves=31, max_depth=5,
-        min_child_samples=40, subsample=0.8, subsample_freq=1, colsample_bytree=0.6,
-        reg_alpha=2.0, reg_lambda=5.0, objective="regression_l1",
-        random_state=SEED, n_jobs=-1, verbosity=-1
+        n_estimators=4000, learning_rate=0.03, num_leaves=63, max_depth=7,
+        min_child_samples=5, subsample=0.8, subsample_freq=1, colsample_bytree=0.6,
+        reg_alpha=0.5, reg_lambda=1.0, objective="regression",
+        random_state=SEED, n_jobs=-1, verbose=-1
     )
     lgb_m1.fit(X_tr, y_tr, eval_set=[(X_va, y_va)],
                callbacks=[lgb.early_stopping(150, verbose=False)])
@@ -623,7 +650,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         n_estimators=4000, learning_rate=0.03, max_depth=5, min_child_weight=6,
         subsample=0.75, colsample_bytree=0.5, colsample_bylevel=0.8,
         reg_alpha=5.0, reg_lambda=10.0, gamma=0.2, max_delta_step=1,
-        objective="reg:absoluteerror", eval_metric="mae", tree_method="hist",
+        objective="reg:squarederror", eval_metric="rmse", tree_method="hist",
         enable_categorical=False, early_stopping_rounds=100, random_state=SEED + 3, n_jobs=-1
     )
     xgb_m2.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
@@ -951,23 +978,23 @@ y_prod = train_real[TARGET]
 
 # Train production XGBoost on all real rows
 xgb_prod = xgb.XGBRegressor(
-    n_estimators=500, learning_rate=0.03, max_depth=5,
-    objective="reg:absoluteerror", tree_method="hist",
+    n_estimators=1000, learning_rate=0.03, max_depth=7,
+    objective="reg:squarederror", tree_method="hist",
     enable_categorical=True, random_state=SEED, n_jobs=-1
 )
 xgb_prod.fit(X_prod, y_prod, verbose=False)
 
 # Train production LightGBM on all real rows
 lgb_prod = lgb.LGBMRegressor(
-    n_estimators=500, learning_rate=0.03, max_depth=5,
-    objective="regression_l1", random_state=SEED, n_jobs=-1, verbosity=-1
+    n_estimators=1000, learning_rate=0.03, max_depth=7,
+    objective="regression", random_state=SEED, n_jobs=-1, verbosity=-1
 )
 lgb_prod.fit(X_prod, y_prod)
 
 # Train production CatBoost on all real rows
 cat_prod = cb.CatBoostRegressor(
-    iterations=500, learning_rate=0.03, depth=5,
-    loss_function="MAE", random_seed=SEED, verbose=False
+    iterations=1000, learning_rate=0.03, depth=7,
+    loss_function="RMSE", random_seed=SEED, verbose=False
 )
 cat_prod.fit(X_prod, y_prod, cat_features=prod_cat_cols, verbose=False)
 

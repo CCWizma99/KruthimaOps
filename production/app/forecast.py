@@ -259,3 +259,126 @@ def get_historical_forecast(district: str, target_date_str: str) -> Dict[str, An
         "risk_level":     level,
         "source":         "archive",
     }
+
+
+def get_historical_forecasts_batched(districts_list: list[str], target_date_str: str) -> Dict[str, Any]:
+    """
+    Batched version of get_historical_forecast.
+    Fetches data for ALL requested districts in a single Open-Meteo API call.
+    """
+    from datetime import datetime
+    target = datetime.strptime(target_date_str, "%Y-%m-%d").date()
+    today = date.today()
+    if target >= today:
+        raise ValueError(f"Historical simulation requires a past date. Got: {target_date_str}")
+
+    ref = get_district_reference()
+    
+    lats = []
+    lons = []
+    valid_districts = []
+    for d in districts_list:
+        if d in ref:
+            valid_districts.append(d)
+            lats.append(str(ref[d].get("center_lat", ref[d].get("latitude", 7.87))))
+            lons.append(str(ref[d].get("center_lon", ref[d].get("longitude", 80.77))))
+
+    if not valid_districts:
+        return {}
+
+    fetch_start = (target - timedelta(days=10)).isoformat()
+    fetch_end   = (target + timedelta(days=3)).isoformat()
+
+    lat_str = ",".join(lats)
+    lon_str = ",".join(lons)
+
+    url = (
+        f"https://archive-api.open-meteo.com/v1/archive?"
+        f"latitude={lat_str}&longitude={lon_str}"
+        f"&daily=precipitation_sum"
+        f"&start_date={fetch_start}&end_date={fetch_end}"
+        f"&timezone=Asia%2FColombo"
+    )
+
+    results = {}
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "FloodGuardSL-HistoricalBatch/1.0"})
+        with urllib.request.urlopen(req, timeout=15) as response:
+            res_data = json.loads(response.read().decode())
+            
+        # Open-Meteo returns a list of objects if multiple coordinates are given, 
+        # but if only 1 coordinate, it returns a single object. Normalize to list.
+        if isinstance(res_data, dict) and "latitude" in res_data:
+            res_data = [res_data]
+
+        for i, dist in enumerate(valid_districts):
+            daily = res_data[i].get("daily", {})
+            daily_time = daily.get("time", [])
+            daily_precip = daily.get("precipitation_sum", [])
+            
+            precip_map = {t: (float(p) if p is not None else 0.0) for t, p in zip(daily_time, daily_precip)}
+            
+            sum_7d = 0.0
+            for offset in range(1, 8):
+                prev = (target - timedelta(days=offset)).isoformat()
+                sum_7d += precip_map.get(prev, 0.0)
+                
+            payload = {
+                "district": dist,
+                "rainfall_7d_mm": sum_7d,
+                "inundation_area_sqm": 0.0,
+                "flood_occurrence_current_event": "No",
+                "is_good_to_live": "Yes",
+                "reason_not_good_to_live": "None",
+                "generation_date": target_date_str,
+            }
+            
+            score = infer(payload)
+            score = score[0] if isinstance(score, tuple) else score
+            
+            if score < 0.25: level = "LOW"
+            elif score < 0.50: level = "MEDIUM"
+            elif score < 0.75: level = "HIGH"
+            else: level = "EXTREME"
+            
+            results[dist] = {
+                "district": dist,
+                "date": target_date_str,
+                "rainfall_7d_mm": round(sum_7d, 2),
+                "risk_score": round(score, 6),
+                "risk_level": level,
+                "source": "archive_batched",
+            }
+            
+    except Exception as e:
+        logger.warning(f"[HistoricalBatch] API failed: {e}")
+        # Fallback for all
+        for dist in valid_districts:
+            fallback_rain = float(ref[dist].get("rainfall_7d_mm", 50.0))
+            sum_7d = (fallback_rain / 7.0) * 7.0
+            payload = {
+                "district": dist,
+                "rainfall_7d_mm": sum_7d,
+                "inundation_area_sqm": 0.0,
+                "flood_occurrence_current_event": "No",
+                "is_good_to_live": "Yes",
+                "reason_not_good_to_live": "None",
+                "generation_date": target_date_str,
+            }
+            score = infer(payload)
+            score = score[0] if isinstance(score, tuple) else score
+            if score < 0.25: level = "LOW"
+            elif score < 0.50: level = "MEDIUM"
+            elif score < 0.75: level = "HIGH"
+            else: level = "EXTREME"
+            
+            results[dist] = {
+                "district": dist,
+                "date": target_date_str,
+                "rainfall_7d_mm": round(sum_7d, 2),
+                "risk_score": round(score, 6),
+                "risk_level": level,
+                "source": "fallback",
+            }
+            
+    return results

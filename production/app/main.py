@@ -387,20 +387,24 @@ async def simulate_historical(date: str):
 
     ref = get_district_reference()
     districts = sorted(ref.keys())
+    
+    logger.info(f"[HistSim] Starting batched historical simulation for {date} across {len(districts)} districts...")
+    
+    from app.forecast import get_historical_forecasts_batched
+    
     results = {}
-    errors  = []
+    errors = []
+    
+    try:
+        results = get_historical_forecasts_batched(districts, date)
+    except Exception as e:
+        logger.error(f"[HistSim] Batched call failed: {e}")
+        errors.append({"error": str(e)})
 
-    logger.info(f"[HistSim] Starting historical simulation for {date} across {len(districts)} districts...")
+    if not results and errors:
+        raise HTTPException(status_code=500, detail="Historical simulation failed. Backend may be offline.")
 
-    for district in districts:
-        try:
-            result = get_historical_forecast(district, date)
-            results[district] = result
-        except Exception as e:
-            logger.warning(f"[HistSim] {district} failed: {e}")
-            errors.append({"district": district, "error": str(e)})
-
-    logger.info(f"[HistSim] Completed: {len(results)}/{len(districts)} districts for {date}.")
+    logger.info(f"[HistSim] Completed batched simulation for {date}.")
 
     return {
         "date":      date,

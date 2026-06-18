@@ -398,7 +398,9 @@ function flyToDistrict(name, lat, lon) {
   setTimeout(() => { overlay.style.display = 'none'; }, 3000);
 
   state.viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(lon, lat, 200000),
+    // Offset the camera 1.5 degrees South to compensate for the -48 degree pitch
+    // This perfectly centers the target district in the viewport
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat - 1.5, 200000),
     orientation: {
       heading: Cesium.Math.toRadians(0),
       pitch: Cesium.Math.toRadians(-48),
@@ -1363,7 +1365,8 @@ function plotMyLocation(lat, lon, accuracy) {
 function flyToMyLocation(lat, lon) {
   if (!state.viewer) return;
   state.viewer.camera.flyTo({
-    destination: Cesium.Cartesian3.fromDegrees(lon, lat, 50000),
+    // Offset the camera 0.3 degrees South to compensate for the -55 degree pitch
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat - 0.3, 50000),
     orientation: {
       heading: Cesium.Math.toRadians(0),
       pitch: Cesium.Math.toRadians(-55),
