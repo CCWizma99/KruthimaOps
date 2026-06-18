@@ -1,5 +1,5 @@
 """
-FloodGuard SL — Application Configuration
+Flood Timeline — Application Configuration
 Single source of truth for all layer switches.
 Change values here to swap providers without touching any other file.
 """
@@ -28,7 +28,7 @@ GEMINI_MODEL      = "gemini-3.5-flash"
 DISTRICT_REFERENCE_PATH = os.path.join(BASE_DIR, "data", "district_reference.json")
 
 # ── API ──────────────────────────────────────────────────────────────
-API_TITLE       = "FloodGuard SL — Flood Risk Prediction API"
+API_TITLE       = "Flood Timeline — Flood Risk Prediction API"
 API_DESCRIPTION = "Production ML inference API for flood risk scoring across Sri Lanka"
 API_VERSION     = "1.0.0"
 

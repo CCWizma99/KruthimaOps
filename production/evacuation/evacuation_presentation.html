@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>FloodGuard SL — Evacuation & Safe Zones</title>
+<title>Flood Timeline &mdash; Evacuation & Safe Zones</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
     /* ─── RESET & ROOT ─── */
@@ -581,14 +581,69 @@
     ::-webkit-scrollbar-track { background: var(--bg-deep); border-radius: 4px; }
     ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--accent-blue); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   PREMIUM GLASSMORPHISM & ANIMATION OVERRIDES
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 1. Dynamic Mesh Background */
+body {
+  background: radial-gradient(circle at 15% 50%, rgba(34, 211, 238, 0.08), transparent 25%),
+              radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.1), transparent 25%),
+              #050d1a !important;
+  background-size: 200% 200% !important;
+  animation: meshPan 20s ease infinite !important;
+}
+
+@keyframes meshPan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 2. Glassmorphism for Panels */
+.header, .layout-sidebar, .card, .admin-card, .search-box, .status-bar {
+  background: rgba(10, 22, 40, 0.6) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
+}
+
+.map-container {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* 4. Button Micro-Animations */
+.btn {
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+.btn:hover:not(:disabled) {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 20px rgba(34,211,238,0.15) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* 5. Lucide Icon Alignments */
+.lucide {
+  vertical-align: text-bottom;
+  stroke-width: 2;
+}
+.icon-sm { width: 16px; height: 16px; display: inline-block; vertical-align: middle; }
+.icon-lg { width: 22px; height: 22px; display: inline-block; vertical-align: middle; }
+
 </style>
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
 <div class="container">
     <!-- HEADER -->
     <header class="header">
         <div>
-            <h1>🚨 FloodGuard SL <small>evacuation &amp; safe zones</small></h1>
+            <h1><i data-lucide="alert-triangle" class="icon-sm"></i> Flood Timeline <small>evacuation &amp; safe zones</small></h1>
         </div>
         <div class="header-right">
             <div class="conn-pill" id="conn-pill">
@@ -604,11 +659,11 @@
         <div class="map-panel">
             <div class="map-toolbar">
                 <button class="btn ghost" id="btn-refresh">↻ Refresh</button>
-                <button class="btn ghost" id="btn-locate">📍 My Location</button>
-                <button class="btn ghost" id="btn-track">🛰️ Start Tracking</button>
+                <button class="btn ghost" id="btn-locate"><i data-lucide="map-pin" class="icon-sm"></i> My Location</button>
+                <button class="btn ghost" id="btn-track"><i data-lucide="satellite" class="icon-sm"></i> Start Tracking</button>
                 <button class="btn ghost" id="btn-routes">🧭 Show routes</button>
-                <a class="btn positive" href="/api/export/svg" download>⬇ SVG</a>
-                <button class="btn primary" id="btn-offline-pkg">📦 Offline pkg</button>
+                <a class="btn positive" href="/api/export/svg" download><i data-lucide="download" class="icon-sm"></i> SVG</a>
+                <button class="btn primary" id="btn-offline-pkg"><i data-lucide="package" class="icon-sm"></i> Offline pkg</button>
                 <div class="search-wrap">
                     <input id="search-box" placeholder="Search address…" autocomplete="off" />
                     <div class="search-results" id="search-results"></div>
@@ -625,13 +680,13 @@
             </div>
 
             <div class="hint-banner" id="hint-banner">
-                🗺️ Click the map to drop a pin (add/edit points) – or tap a marker and choose <strong>Route here</strong> for directions.
+                <i data-lucide="map" class="icon-sm"></i> Click the map to drop a pin (add/edit points) – or tap a marker and choose <strong>Route here</strong> for directions.
             </div>
             <div class="hint-banner offline-hint" id="offline-hint" style="display:none;">
-                📡 You are offline — using cached data. Routes are straight-line estimates with compass guidance.
+                📡 You are offline &mdash; using cached data. Routes are straight-line estimates with compass guidance.
             </div>
             <div class="hint-banner warning" id="geo-warning" style="display:none;">
-                📍 Could not get your location. Please allow location access or use "Pick start point".
+                <i data-lucide="map-pin" class="icon-sm"></i> Could not get your location. Please allow location access or use "Pick start point".
             </div>
 
             <div id="map"></div>
@@ -643,8 +698,8 @@
             <div class="card" id="nav-card">
                 <h2>🧭 Route to Safety</h2>
                 <div class="start-mode-row">
-                    <button class="btn ghost active" id="start-mode-live">🛰️ Live</button>
-                    <button class="btn ghost" id="start-mode-manual">📌 Pick start</button>
+                    <button class="btn ghost active" id="start-mode-live"><i data-lucide="satellite" class="icon-sm"></i> Live</button>
+                    <button class="btn ghost" id="start-mode-manual"><i data-lucide="map-pin" class="icon-sm"></i> Pick start</button>
                 </div>
                 <div class="nav-idle" id="nav-idle">
                     Choose a start method above, then tap a marker and select <strong>Route here</strong>.
@@ -652,9 +707,9 @@
                     Or enable <strong>Live Tracking</strong> on the map toolbar for continuous guidance to the nearest safe zone.
                 </div>
                 <div class="nav-active" id="nav-active">
-                    <div class="nav-mode-badge" id="nav-mode-badge">—</div>
+                    <div class="nav-mode-badge" id="nav-mode-badge">&mdash;</div>
                     <div class="nav-warn" id="nav-warn"></div>
-                    <div class="nav-target" id="nav-target">—</div>
+                    <div class="nav-target" id="nav-target">&mdash;</div>
                     <div class="nav-metrics" id="nav-metrics"></div>
                     <div class="nav-compass" id="nav-compass">
                         <span class="compass-arrow" id="compass-arrow">➤</span>
@@ -667,18 +722,18 @@
 
             <!-- Offline card -->
             <div class="card">
-                <h2>📦 Offline Readiness</h2>
+                <h2><i data-lucide="package" class="icon-sm"></i> Offline Readiness</h2>
                 <div class="offline-status-line" id="offline-status-line">No offline data cached yet.</div>
                 <div class="offline-card-row">
-                    <button class="btn primary" id="btn-cache-now">⬇ Cache map &amp; data</button>
+                    <button class="btn primary" id="btn-cache-now"><i data-lucide="download" class="icon-sm"></i> Cache map &amp; data</button>
                     <button class="btn ghost" id="btn-clear-cache">🗑 Clear</button>
                 </div>
             </div>
 
             <!-- Admin form -->
             <div class="card">
-                <h2 id="form-title">📍 Add / Edit a point</h2>
-                <div class="coord-readout unset" id="coord-readout">No location — click the map.</div>
+                <h2 id="form-title"><i data-lucide="map-pin" class="icon-sm"></i> Add / Edit a point</h2>
+                <div class="coord-readout unset" id="coord-readout">No location &mdash; click the map.</div>
 
                 <div class="field">
                     <label for="field-type">Type</label>
@@ -746,7 +801,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════
-// FLOODGUARD SL — COMPLETE CLIENT (COMMON VIEW)
+// FLOODGUARD SL &mdash; COMPLETE CLIENT (COMMON VIEW)
 // ═══════════════════════════════════════════════════════════════
 
 // ─── HELPERS ──────────────────────────────────────────────────
@@ -810,7 +865,7 @@ const offlineStatusLine = $('offline-status-line');
 const btnOfflinePkg = $('btn-offline-pkg');
 
 // ─── INDEXED DB HELPERS ────────────────────────────────────────
-const DB_NAME = 'floodguard-offline-v2';
+const DB_NAME = 'flood-timeline-offline-v2';
 const DB_VERSION = 2;
 
 function openDb() {
@@ -917,7 +972,7 @@ function hazardIcon() {
 function setCoordReadout(lat, lng) {
     if (lat == null || lng == null) {
         coordReadout.classList.add('unset');
-        coordReadout.textContent = 'No location — click the map.';
+        coordReadout.textContent = 'No location &mdash; click the map.';
     } else {
         coordReadout.classList.remove('unset');
         coordReadout.innerHTML = `Selected: <strong>${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}</strong>`;
@@ -936,10 +991,10 @@ function clearPendingSelection() {
 
 function exitEditMode() {
     editingId = null;
-    formTitle.textContent = '📍 Add / Edit a point';
+    formTitle.textContent = '<i data-lucide="map-pin" class="icon-sm"></i> Add / Edit a point';
     btnAdd.textContent = '+ Add point';
     hintBanner.classList.remove('edit-mode');
-    hintBanner.textContent = '🗺️ Click the map to drop a pin (add/edit points) – or tap a marker and choose Route here for directions.';
+    hintBanner.textContent = '<i data-lucide="map" class="icon-sm"></i> Click the map to drop a pin (add/edit points) – or tap a marker and choose Route here for directions.';
     fldLabel.value = '';
     fldDesc.value = '';
     fldType.value = 'Safe Zone';
@@ -950,9 +1005,9 @@ function exitEditMode() {
 function enterEditMode(p) {
     editingId = p.id;
     formTitle.textContent = '✏️ Edit point';
-    btnAdd.textContent = '✓ Save changes';
+    btnAdd.textContent = '<i data-lucide="check" class="icon-sm"></i> Save changes';
     hintBanner.classList.add('edit-mode');
-    hintBanner.textContent = `✏️ Editing "${escapeHtml(p.label)}" — click map to move it.`;
+    hintBanner.textContent = `✏️ Editing "${escapeHtml(p.label)}" &mdash; click map to move it.`;
     fldType.value = p.type || 'Safe Zone';
     fldLabel.value = p.label || '';
     fldDesc.value = p.description || '';
@@ -1004,7 +1059,7 @@ function setManualStart(lat, lng) {
     manualStartLatLng = { lat, lng };
     if (manualStartMarker) lmap.removeLayer(manualStartMarker);
     manualStartMarker = L.marker([lat, lng], { icon: manualStartIcon() }).addTo(lmap);
-    manualStartMarker.bindPopup('📍 Start location').openPopup();
+    manualStartMarker.bindPopup('<i data-lucide="map-pin" class="icon-sm"></i> Start location').openPopup();
     if (lastRouteTargetId) {
         const target = cachedPoints.find(p => p.id === lastRouteTargetId);
         if (target) recalcNavigation(lat, lng, target);
@@ -1028,7 +1083,7 @@ function renderPoints(points) {
         const popupId = `go-${p.id}`;
         const popupContent = `
             <div class="info-window-content">
-                <h4>${escapeHtml(p.label)} — ${escapeHtml(p.type)}</h4>
+                <h4>${escapeHtml(p.label)} &mdash; ${escapeHtml(p.type)}</h4>
                 <div>${escapeHtml(p.description || '')}</div>
                 ${capLine}
                 <div class="iw-status">Status: ${escapeHtml(p.status || 'Unknown')}</div>
@@ -1069,7 +1124,7 @@ function renderPoints(points) {
             const typeSpan = document.createElement('span');
             typeSpan.style.color = 'var(--text-faint)';
             typeSpan.style.fontWeight = '400';
-            typeSpan.textContent = ` — ${p.type}`;
+            typeSpan.textContent = ` &mdash; ${p.type}`;
             nameSpan.appendChild(typeSpan);
             const statusSpan = document.createElement('div');
             statusSpan.className = 'pstatus';
@@ -1343,7 +1398,7 @@ async function recalcNavigation(lat, lng, explicitTarget) {
         if (!best) {
             navIdle.style.display = 'block';
             navActive.style.display = 'none';
-            navIdle.textContent = 'No safe zones with coordinates — add one to enable navigation.';
+            navIdle.textContent = 'No safe zones with coordinates &mdash; add one to enable navigation.';
             return;
         }
         target = best.point;
@@ -1369,13 +1424,13 @@ async function recalcNavigation(lat, lng, explicitTarget) {
     if (!isOnline) {
         const brg = bearingDeg(lat, lng, Number(target.lat), Number(target.lng));
         drawStraightLine([lat, lng], [Number(target.lat), Number(target.lng)]);
-        navModeBadge.textContent = '🟠 Offline — straight-line estimate';
+        navModeBadge.textContent = '🟠 Offline &mdash; straight-line estimate';
         navModeBadge.className = 'nav-mode-badge mode-offline';
         navMetrics.textContent = `${distanceKm.toFixed(2)} km · straight-line distance`;
         navCompass.style.display = 'flex';
         compassArrow.style.transform = `rotate(${brg - 90}deg)`;
         compassLabelEl.textContent = `${compassLabel(brg)} (${Math.round(brg)}°)`;
-        navSteps.innerHTML = '<div class="nav-step nav-step-muted">Offline — showing direct distance and compass bearing from cached data.</div>';
+        navSteps.innerHTML = '<div class="nav-step nav-step-muted">Offline &mdash; showing direct distance and compass bearing from cached data.</div>';
         return;
     }
 
@@ -1383,7 +1438,7 @@ async function recalcNavigation(lat, lng, explicitTarget) {
         const route = await fetchOsrmRoute(lat, lng, Number(target.lat), Number(target.lng));
         const coords = route.geometry.coordinates.map(([lo, la]) => [la, lo]);
         drawRoadLine(coords);
-        navModeBadge.textContent = '🟢 Online — real road route';
+        navModeBadge.textContent = '<i data-lucide="wifi" class="icon-sm"></i> Online &mdash; real road route';
         navModeBadge.className = 'nav-mode-badge mode-online';
         const km = (route.distance / 1000).toFixed(2);
         const mins = Math.round(route.duration / 60);
@@ -1394,13 +1449,13 @@ async function recalcNavigation(lat, lng, explicitTarget) {
     } catch (err) {
         const brg = bearingDeg(lat, lng, Number(target.lat), Number(target.lng));
         drawStraightLine([lat, lng], [Number(target.lat), Number(target.lng)]);
-        navModeBadge.textContent = '🟠 Offline — straight-line estimate';
+        navModeBadge.textContent = '🟠 Offline &mdash; straight-line estimate';
         navModeBadge.className = 'nav-mode-badge mode-offline';
         navMetrics.textContent = `${distanceKm.toFixed(2)} km · straight-line distance`;
         navCompass.style.display = 'flex';
         compassArrow.style.transform = `rotate(${brg - 90}deg)`;
         compassLabelEl.textContent = `${compassLabel(brg)} (${Math.round(brg)}°)`;
-        navSteps.innerHTML = '<div class="nav-step nav-step-muted">No road-routing connection — showing direct distance and compass bearing.</div>';
+        navSteps.innerHTML = '<div class="nav-step nav-step-muted">No road-routing connection &mdash; showing direct distance and compass bearing.</div>';
     }
 }
 
@@ -1426,7 +1481,7 @@ function goToPoint(p) {
             }
         );
     } else {
-        alert('Pick a start point on the map first (📌 Pick start), then tap a marker.');
+        alert('Pick a start point on the map first (<i data-lucide="map-pin" class="icon-sm"></i> Pick start), then tap a marker.');
     }
 }
 
@@ -1452,7 +1507,7 @@ function onPositionUpdate(pos) {
 
     if (accuracy && accuracy > 50) {
         navWarn.style.display = 'block';
-        navWarn.textContent = `⚠️ GPS accuracy poor (±${Math.round(accuracy)}m) — directions may be imprecise.`;
+        navWarn.textContent = `⚠️ GPS accuracy poor (±${Math.round(accuracy)}m) &mdash; directions may be imprecise.`;
     }
 
     if (startMode !== 'live') return;
@@ -1491,7 +1546,7 @@ function startTracking() {
 function stopTracking() {
     liveTracking = false;
     btnTrack.classList.remove('active');
-    btnTrack.textContent = '🛰️ Start Tracking';
+    btnTrack.textContent = '<i data-lucide="satellite" class="icon-sm"></i> Start Tracking';
     if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     if (liveMarker) { lmap.removeLayer(liveMarker); liveMarker = null; }
     if (liveAccCircle) { lmap.removeLayer(liveAccCircle); liveAccCircle = null; }
@@ -1506,7 +1561,7 @@ function stopTracking() {
 function updateConnPill() {
     isOnline = navigator.onLine;
     connPill.classList.toggle('offline', !isOnline);
-    connText.textContent = isOnline ? 'Online' : 'Offline — cached data';
+    connText.textContent = isOnline ? 'Online' : 'Offline &mdash; cached data';
     setupOfflineHint();
     if (isOnline) {
         loadPoints();
@@ -1563,10 +1618,10 @@ btnCacheNow.addEventListener('click', async () => {
         alert('Map data cached. Safe zones, evacuation points, and visible map area are now available offline.');
     } catch (err) {
         console.error('cache error', err);
-        alert('Could not cache data — check your connection and try again.');
+        alert('Could not cache data &mdash; check your connection and try again.');
     } finally {
         btnCacheNow.disabled = false;
-        btnCacheNow.textContent = '⬇ Cache map & data';
+        btnCacheNow.textContent = '<i data-lucide="download" class="icon-sm"></i> Cache map & data';
     }
 });
 
@@ -1729,8 +1784,9 @@ setTimeout(() => {
     }
 }, 3000);
 
-console.log('🚨 FloodGuard SL loaded (common view)');
+console.log('<i data-lucide="alert-triangle" class="icon-sm"></i> Flood Timeline loaded (common view)');
 console.log(`📡 ${isOnline ? 'Online' : 'Offline'} mode`);
 </script>
+  <script>lucide.createIcons();</script>
 </body>
 </html>

@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify, Response
+from fastapi import APIRouter, Request, HTTPException, Header, Depends
+from fastapi.responses import JSONResponse, Response, HTMLResponse
 import os
 import sqlite3
 import uuid
@@ -7,16 +8,20 @@ import io
 import zipfile
 import json
 import math
+from typing import Optional
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(HERE, 'data')
+# Note: we use the existing data directory as requested in the plan
+DATA_DIR = os.path.abspath(os.path.join(HERE, '..', '..', 'data'))
 DB_PATH = os.path.join(DATA_DIR, 'evac_points.db')
-HTML_FILE = os.path.join(HERE, 'evacuation_presentation.html')
-SW_FILE = os.path.join(HERE, 'sw.js')
+
+# Original frontend files
+HTML_FILE = os.path.join(HERE, '..', 'evacuation', 'evacuation_presentation.html')
+SW_FILE = os.path.join(HERE, '..', 'evacuation', 'sw.js')
 
 ADMIN_KEY = os.environ.get('FLOODGUARD_ADMIN_KEY', 'changeme-flood-timeline')
 
-app = Flask(__name__, static_folder=HERE)
+router = APIRouter(tags=["Evacuation"])
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ─── DATABASE ────────────────────────────────────────────────────
@@ -60,9 +65,10 @@ def init_db():
 init_db()
 
 # ─── AUTH ───────────────────────────────────────────────────────
-def require_admin(req):
-    key = req.headers.get('X-Admin-Key', '')
-    return key == ADMIN_KEY
+def require_admin(x_admin_key: Optional[str] = Header(None)):
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="admin key required")
+    return True
 
 # ─── HELPERS ────────────────────────────────────────────────────
 def row_to_point(r):
@@ -81,18 +87,15 @@ def read_points():
     return [row_to_point(r) for r in rows]
 
 def compute_xy_from_latlng(lat, lng):
-    """Simple equirectangular projection relative to a reference point."""
-    # Use the center of Sri Lanka as reference for moderate accuracy
     ref_lat, ref_lng = 7.8731, 80.7718
     R = 6371.0
     x = R * math.radians(lng - ref_lng) * math.cos(math.radians(ref_lat))
     y = R * math.radians(lat - ref_lat)
     return x, y
 
-def append_point(data):
+def append_point(data: dict):
     conn = get_db()
     now = datetime.now(timezone.utc).isoformat()
-    # ensure lat/lng are floats
     lat = data.get('lat')
     lng = data.get('lng')
     if lat is not None:
@@ -101,7 +104,6 @@ def append_point(data):
     if lng is not None:
         try: lng = float(lng)
         except: lng = None
-    # compute x/y if lat/lng present, else use provided or 0
     if lat is not None and lng is not None:
         x, y = compute_xy_from_latlng(lat, lng)
     else:
@@ -137,38 +139,30 @@ def update_point(point_id, data):
         return None
 
     target = row_to_point(existing)
-    # Update simple fields
     if 'type' in data and data['type']: target['type'] = data['type']
     if 'label' in data and data['label']: target['label'] = data['label']
     if 'description' in data: target['description'] = data['description']
     if 'status' in data: target['status'] = data['status']
     if 'capacity' in data: target['capacity'] = data['capacity']
 
-    # Update lat/lng with validation
     lat = data.get('lat')
     lng = data.get('lng')
     if lat is not None or lng is not None:
         if lat is not None:
-            try:
-                lat = float(lat)
-            except:
+            try: lat = float(lat)
+            except: 
                 conn.close()
                 return {'error': 'Invalid latitude'}
         if lng is not None:
-            try:
-                lng = float(lng)
-            except:
+            try: lng = float(lng)
+            except: 
                 conn.close()
                 return {'error': 'Invalid longitude'}
         target['lat'] = lat
         target['lng'] = lng
         if lat is not None and lng is not None:
             target['x'], target['y'] = compute_xy_from_latlng(lat, lng)
-        else:
-            # if only one is provided, keep old x/y? Better to keep as is.
-            pass
     else:
-        # if x/y are provided directly (legacy)
         if 'x' in data and data['x'] is not None:
             try: target['x'] = float(data['x'])
             except: pass
@@ -177,7 +171,6 @@ def update_point(point_id, data):
             except: pass
 
     target['updated_at'] = datetime.now(timezone.utc).isoformat()
-
     conn.execute('''
         UPDATE points SET type=:type, label=:label, x=:x, y=:y, lat=:lat, lng=:lng,
             description=:description, status=:status, capacity=:capacity, updated_at=:updated_at
@@ -195,11 +188,9 @@ def delete_point(point_id):
     return cur.rowcount > 0
 
 def build_svg(points):
-    # Compute bounding box from points with lat/lng
     lats = [p['lat'] for p in points if p['lat'] is not None]
     lngs = [p['lng'] for p in points if p['lng'] is not None]
     if not lats or not lngs:
-        # fallback to empty map
         return '''<?xml version="1.0" encoding="utf-8"?>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 480">
         <rect width="720" height="480" fill="#0b1830"/>
@@ -208,7 +199,6 @@ def build_svg(points):
 
     min_lat, max_lat = min(lats), max(lats)
     min_lng, max_lng = min(lngs), max(lngs)
-    # Add padding
     lat_pad = (max_lat - min_lat) * 0.1 or 0.01
     lng_pad = (max_lng - min_lng) * 0.1 or 0.01
     min_lat -= lat_pad
@@ -216,10 +206,9 @@ def build_svg(points):
     min_lng -= lng_pad
     max_lng += lng_pad
 
-    # Map to SVG coordinates (720x480)
     def project(lat, lng):
         x = (lng - min_lng) / (max_lng - min_lng) * 720
-        y = (max_lat - lat) / (max_lat - min_lat) * 480  # flip y
+        y = (max_lat - lat) / (max_lat - min_lat) * 480
         return x, y
 
     parts = []
@@ -228,8 +217,7 @@ def build_svg(points):
     parts.append('<rect width="720" height="480" fill="#0b1830"/>')
 
     for p in points:
-        if p['lat'] is None or p['lng'] is None:
-            continue
+        if p['lat'] is None or p['lng'] is None: continue
         cx, cy = project(p['lat'], p['lng'])
         ptype = (p.get('type') or '').lower()
         label = p.get('label', '?')
@@ -240,67 +228,65 @@ def build_svg(points):
             parts.append(f'<circle cx="{cx}" cy="{cy}" r="18" fill="#ff5d6c" opacity="0.95"/>')
             parts.append(f'<text x="{cx}" y="{cy+5}" text-anchor="middle" font-size="14" fill="white" font-weight="700">{label}</text>')
     parts.append('</svg>')
-    return '\n'.join(parts)
+    return '\\n'.join(parts)
+
 
 # ─── ROUTES ─────────────────────────────────────────────────────
-@app.route('/')
-def index():
+
+@router.get('/evacuation')
+async def evacuation_dashboard():
     with open(HTML_FILE, 'r', encoding='utf-8') as f:
         html = f.read()
-    return Response(html, mimetype='text/html')
+    return HTMLResponse(content=html)
 
-@app.route('/sw.js')
-def service_worker():
-    with open(SW_FILE, 'r', encoding='utf-8') as f:
-        js = f.read()
-    return Response(js, mimetype='application/javascript')
 
-@app.route('/api/points', methods=['GET', 'POST'])
-def api_points():
-    if request.method == 'GET':
-        return jsonify(read_points())
-    if not require_admin(request):
-        return jsonify({'error': 'admin key required'}), 401
-    data = request.get_json(force=True)
+
+@router.get('/api/points')
+def api_points_get():
+    return read_points()
+
+@router.post('/api/points', status_code=201)
+async def api_points_post(request: Request, admin: bool = Depends(require_admin)):
+    try:
+        data = await request.json()
+    except:
+        raise HTTPException(status_code=400, detail="invalid json")
+    
     if not data or 'type' not in data or 'label' not in data:
-        return jsonify({'error': 'missing type or label'}), 400
-    # validate lat/lng if provided
+        raise HTTPException(status_code=400, detail="missing type or label")
+    
     if data.get('lat') is not None:
         try: float(data['lat'])
-        except: return jsonify({'error': 'invalid lat'}), 400
+        except: raise HTTPException(status_code=400, detail="invalid lat")
     if data.get('lng') is not None:
         try: float(data['lng'])
-        except: return jsonify({'error': 'invalid lng'}), 400
+        except: raise HTTPException(status_code=400, detail="invalid lng")
+        
     row = append_point(data)
-    print(f"[ADMIN] Added point {row['id']} - {row['label']}")
-    return jsonify(row), 201
+    return row
 
-@app.route('/api/points/<point_id>', methods=['PUT'])
-def api_update_point(point_id):
-    if not require_admin(request):
-        return jsonify({'error': 'admin key required'}), 401
-    data = request.get_json(force=True)
+@router.put('/api/points/{point_id}')
+async def api_update_point_route(point_id: str, request: Request, admin: bool = Depends(require_admin)):
+    try: data = await request.json()
+    except: raise HTTPException(status_code=400, detail="invalid json")
     if not data:
-        return jsonify({'error': 'missing payload'}), 400
+        raise HTTPException(status_code=400, detail="missing payload")
+    
     updated = update_point(point_id, data)
     if isinstance(updated, dict) and 'error' in updated:
-        return jsonify(updated), 400
+        raise HTTPException(status_code=400, detail=updated['error'])
     if updated is None:
-        return jsonify({'error': 'not found'}), 404
-    print(f"[ADMIN] Updated point {point_id}")
-    return jsonify(updated)
+        raise HTTPException(status_code=404, detail="not found")
+    return updated
 
-@app.route('/api/points/<point_id>', methods=['DELETE'])
-def api_delete_point(point_id):
-    if not require_admin(request):
-        return jsonify({'error': 'admin key required'}), 401
+@router.delete('/api/points/{point_id}')
+def api_delete_point_route(point_id: str, admin: bool = Depends(require_admin)):
     ok = delete_point(point_id)
     if not ok:
-        return jsonify({'error': 'not found'}), 404
-    print(f"[ADMIN] Deleted point {point_id}")
-    return jsonify({'status': 'deleted', 'id': point_id})
+        raise HTTPException(status_code=404, detail="not found")
+    return {'status': 'deleted', 'id': point_id}
 
-@app.route('/api/routes', methods=['GET'])
+@router.get('/api/routes')
 def api_routes():
     points = read_points()
     evac = [p for p in points if p['type'] and 'evac' in p['type'].lower()]
@@ -319,8 +305,7 @@ def api_routes():
         return R * 2 * math.atan2(math.sqrt(a_), math.sqrt(1-a_))
 
     for e in evac:
-        if not safe:
-            continue
+        if not safe: continue
         nearest = min(safe, key=lambda s: haversine(e, s))
         path_latlng = []
         if e['lat'] is not None and e['lng'] is not None and nearest['lat'] is not None and nearest['lng'] is not None:
@@ -330,21 +315,15 @@ def api_routes():
             status = 'blocked'
         routes.append({
             'id': uuid.uuid4().hex, 'from_id': e['id'], 'to_id': nearest['id'],
-            'path_svg': [],  # not used by frontend
-            'path_latlng': path_latlng,
-            'status': status
+            'path_svg': [], 'path_latlng': path_latlng, 'status': status
         })
-    return jsonify(routes)
+    return routes
 
-@app.route('/api/rank_safe_zones', methods=['GET'])
-def api_rank_safe_zones():
+@router.get('/api/rank_safe_zones')
+def api_rank_safe_zones(origin_lat: Optional[str] = None, origin_lng: Optional[str] = None, profile: str = 'default'):
     points = read_points()
     safe = [p for p in points if p['type'] and 'safe' in p['type'].lower()]
-    if not safe:
-        return jsonify([])
-    origin_lat = request.args.get('origin_lat')
-    origin_lng = request.args.get('origin_lng')
-    profile = request.args.get('profile', 'default')
+    if not safe: return []
 
     def haversine(lat1, lon1, lat2, lon2):
         R = 6371.0
@@ -359,51 +338,46 @@ def api_rank_safe_zones():
         score = 0.0
         dist = None
         if origin_lat and origin_lng and s['lat'] is not None and s['lng'] is not None:
-            try:
-                dist = haversine(float(origin_lat), float(origin_lng), float(s['lat']), float(s['lng']))
-            except Exception:
-                dist = None
+            try: dist = haversine(float(origin_lat), float(origin_lng), float(s['lat']), float(s['lng']))
+            except: dist = None
+            
         dist_score = 0.0 if dist is None else max(0.0, 1.0 - min(dist / 50.0, 1.0))
         score += dist_score * 0.6
         st = (s.get('status') or '').lower()
-        if 'open' in st or 'ready' in st or 'accessible' in st or 'active' in st:
-            score += 0.3
-        if 'overcrowded' in st:
-            score -= 0.25
-        if 'closed' in st or 'unavailable' in st:
-            score -= 0.9
+        if 'open' in st or 'ready' in st or 'accessible' in st or 'active' in st: score += 0.3
+        if 'overcrowded' in st: score -= 0.25
+        if 'closed' in st or 'unavailable' in st: score -= 0.9
+        
         cap = s.get('capacity')
         if cap is not None:
             try:
                 cap = int(cap)
-                if cap <= 0:
-                    score -= 0.2
-                elif cap > 200:
-                    score += 0.05
-            except Exception:
-                pass
-        if profile == 'elderly':
-            score += dist_score * 0.2
+                if cap <= 0: score -= 0.2
+                elif cap > 200: score += 0.05
+            except: pass
+            
+        if profile == 'elderly': score += dist_score * 0.2
         scored.append({'point': s, 'score': round(score, 4), 'distance_km': dist})
-    # Sort by score descending
+        
     scored.sort(key=lambda x: x['score'], reverse=True)
-    # Hard-filter closed: move them to the end unless no open zones exist
     open_zones = [entry for entry in scored if 'closed' not in (entry['point']['status'] or '').lower()]
     if open_zones:
         scored = open_zones + [entry for entry in scored if 'closed' in (entry['point']['status'] or '').lower()]
-    return jsonify(scored)
+    return scored
 
-@app.route('/api/hazards', methods=['GET', 'POST'])
-def api_hazards():
+@router.get('/api/hazards')
+def api_hazards_get():
     conn = get_db()
-    if request.method == 'GET':
-        rows = conn.execute('SELECT * FROM hazards ORDER BY created_at DESC').fetchall()
-        conn.close()
-        return jsonify([dict(r) for r in rows])
-    if not require_admin(request):
-        conn.close()
-        return jsonify({'error': 'admin key required'}), 401
-    data = request.get_json(force=True)
+    rows = conn.execute('SELECT * FROM hazards ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+@router.post('/api/hazards', status_code=201)
+async def api_hazards_post(request: Request, admin: bool = Depends(require_admin)):
+    try: data = await request.json()
+    except: raise HTTPException(status_code=400, detail="invalid json")
+    
+    conn = get_db()
     row = {
         'id': uuid.uuid4().hex,
         'lat': data.get('lat'), 'lng': data.get('lng'),
@@ -414,20 +388,18 @@ def api_hazards():
     conn.execute('INSERT INTO hazards (id, lat, lng, radius_m, note, created_at) VALUES (:id,:lat,:lng,:radius_m,:note,:created_at)', row)
     conn.commit()
     conn.close()
-    print(f"[ADMIN] Added hazard {row['id']}")
-    return jsonify(row), 201
+    return row
 
-@app.route('/api/export/svg')
-def export_svg():
+@router.get('/api/export/svg')
+def export_svg_route():
     points = read_points()
     svg = build_svg(points)
-    return Response(svg, mimetype='image/svg+xml', headers={'Content-Disposition': 'attachment; filename="evacuation_map.svg"'})
+    return Response(content=svg, media_type='image/svg+xml', headers={'Content-Disposition': 'attachment; filename="evacuation_map.svg"'})
 
-@app.route('/api/export/package')
-def export_package():
+@router.get('/api/export/package')
+def export_package_route():
     points = read_points()
     svg = build_svg(points)
-
     routes = []
     evac = [p for p in points if p['type'] and 'evac' in p['type'].lower()]
     safe_points = [p for p in points if p['type'] and 'safe' in p['type'].lower()]
@@ -444,12 +416,10 @@ def export_package():
         return R * 2 * math.atan2(math.sqrt(a_), math.sqrt(1-a_))
 
     for e in evac:
-        if not safe_points:
-            continue
+        if not safe_points: continue
         nearest = min(safe_points, key=lambda s: haversine(e, s))
         routes.append({
-            'from': e['id'], 'to': nearest['id'],
-            'path_svg': [],  # not used
+            'from': e['id'], 'to': nearest['id'], 'path_svg': [],
             'path_latlng': [[e['lat'], e['lng']], [nearest['lat'], nearest['lng']]] if e['lat'] and nearest['lat'] else []
         })
 
@@ -465,9 +435,4 @@ def export_package():
         zf.writestr('routes.json', json.dumps(routes, ensure_ascii=False, indent=2))
         zf.writestr('contacts.json', json.dumps(contacts, ensure_ascii=False, indent=2))
     buf.seek(0)
-    return Response(buf.read(), mimetype='application/zip', headers={'Content-Disposition': 'attachment; filename="evacuation_offline_package.zip"'})
-
-if __name__ == '__main__':
-    # Use environment variable to control debug mode; default to False for safety
-    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
-    app.run(host='0.0.0.0', port=5000, debug=debug_mode)
+    return Response(content=buf.read(), media_type='application/zip', headers={'Content-Disposition': 'attachment; filename="evacuation_offline_package.zip"'})

@@ -1,1 +1,1 @@
-# FloodGuard SL application package
+# Flood Timeline application package

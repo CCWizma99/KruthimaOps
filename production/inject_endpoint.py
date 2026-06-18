@@ -49,7 +49,7 @@ async def predict_subdivisions(district_name: str):
     )
     
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "FloodGuardSL"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Flood TimelineSL"})
         with urllib.request.urlopen(req, timeout=10) as response:
             res_data = json.loads(response.read().decode())
     except Exception as e:

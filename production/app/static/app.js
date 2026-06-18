@@ -1,5 +1,5 @@
 /**
- * FloodGuard SL — Dashboard Application v2
+ * Flood Timeline — Dashboard Application v2
  * 3D CesiumJS terrain + district detail bottom modal + what-if simulator modal
  * Background precompute polling → progressive district risk prism rendering
  */
@@ -76,7 +76,7 @@ function updateLastRefreshTime() {
 
   // Try to read the timestamp stored by the Service Worker
   if ('caches' in window) {
-    caches.open('floodguard-cache-v4').then(cache => {
+    caches.open('flood-timeline-cache-v4').then(cache => {
       cache.match('/__last_refresh_time__').then(resp => {
         if (resp) {
           resp.text().then(ts => {
@@ -101,7 +101,7 @@ function setRefreshTimeNow() {
   if (el) el.textContent = formatRefreshTime(new Date());
   // Also store it
   if ('caches' in window) {
-    caches.open('floodguard-cache-v4').then(cache => {
+    caches.open('flood-timeline-cache-v4').then(cache => {
       cache.put(
         new Request('/__last_refresh_time__'),
         new Response(new Date().toISOString())
@@ -427,7 +427,7 @@ async function loadDistricts() {
     // Fetch all district reference data in parallel
     const refs = await Promise.all(
       data.districts.map(name =>
-        fetch(`${API_BASE}/api/district/${encodeURIComponent(name)}`)
+        fetch(${API_BASE}/api/district/)
           .then(r => r.ok ? r.json() : null)
       )
     );
@@ -456,20 +456,19 @@ function startPrecomputePolling() {
   banner.style.display = 'flex';
   chip.style.display = 'flex';
 
-  async function poll() {
+  const evtSource = new EventSource(${API_BASE}/api/forecasts/stream);
+
+  evtSource.onmessage = function(event) {
     try {
-      // 1. Get today's computed scores
-      const r = await fetch(`${API_BASE}/api/forecasts/today`);
-      const data = await r.json();
+      const data = JSON.parse(event.data);
       const pct = data.total > 0 ? (data.ready / data.total) * 100 : 0;
 
-      fill.style.width = `${pct}%`;
-      label.textContent = data.complete
-        ? `All ${data.total} risk profiles ready`
-        : `Computing district profiles… ${data.ready}/${data.total}`;
+      fill.style.width = ${pct}%;
+      label.textContent = (data.ready >= data.total)
+        ? All  risk profiles ready
+        : Computing district profiles… /;
       readyCnt.textContent = data.ready;
 
-      // Render newly computed districts as part of the 3D surface
       let newlyAdded = false;
       for (const [name, forecastList] of Object.entries(data.districts)) {
         if (!state.districtForecasts[name]) {
@@ -478,32 +477,31 @@ function startPrecomputePolling() {
           newlyAdded = true;
         }
       }
+      
       if (newlyAdded) {
         update3DRiskSurface(state.activeForecastIndex);
       }
 
-      // Enable simulate button once a district is selected
       if (state.selectedDistrict) {
         document.getElementById('simulate-btn').disabled = false;
       }
 
-      if (data.complete || data.ready >= data.total) {
-        // Hide progress after a delay
+      if (data.ready >= data.total) {
         setTimeout(() => {
           banner.style.display = 'none';
         }, 4000);
-        label.textContent = `✓ All ${data.total} district risk profiles loaded`;
-        return; // stop polling
+        label.textContent = ✓ All  district risk profiles loaded;
+        evtSource.close();
       }
-
     } catch (e) {
-      console.warn('[Precompute] Poll failed:', e);
+      console.warn('[Precompute] SSE parse failed:', e);
     }
-    state.precomputePollTimer = setTimeout(poll, 5000);
-  }
+  };
 
-  // Start after a short delay (server needs time to boot)
-  state.precomputePollTimer = setTimeout(poll, 4000);
+  evtSource.onerror = function() {
+    console.warn('[Precompute] SSE connection error');
+    evtSource.close();
+  };
 }
 
 // ════════════════════════════════════════════ DISTRICT SELECT ══
@@ -961,7 +959,7 @@ function exportLog() {
   ).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement('a'), { href: url, download: 'floodguard_log.csv' });
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'flood-timeline_log.csv' });
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -1589,3 +1587,52 @@ function restoreNationalView() {
   });
 }
 
+
+// ════════════════════════════════════════════════════════ ZOOM ══
+let lastMousePos = null;
+document.addEventListener('mousemove', (e) => {
+  const container = document.getElementById('cesium-container');
+  if (container && container.contains(e.target)) {
+    const rect = container.getBoundingClientRect();
+    lastMousePos = new Cesium.Cartesian2(e.clientX - rect.left, e.clientY - rect.top);
+  }
+});
+
+function zoomMapTowards(isZoomIn, useMouse) {
+  if (!state.viewer) return;
+  const camera = state.viewer.camera;
+  const height = camera.positionCartographic.height;
+  
+  if (useMouse && lastMousePos) {
+    const ray = camera.getPickRay(lastMousePos);
+    if (ray) {
+      const intersection = state.viewer.scene.globe.pick(ray, state.viewer.scene);
+      if (intersection) {
+        const direction = Cesium.Cartesian3.subtract(intersection, camera.position, new Cesium.Cartesian3());
+        const distance = Cesium.Cartesian3.magnitude(direction);
+        Cesium.Cartesian3.normalize(direction, direction);
+        const moveAmount = isZoomIn ? distance * 0.2 : -distance * 0.2;
+        camera.move(direction, moveAmount);
+        return;
+      }
+    }
+  }
+  
+  // Fallback for button clicks (zooms to center)
+  const amount = height * 0.2;
+  if (isZoomIn) camera.zoomIn(amount);
+  else camera.zoomOut(amount);
+}
+
+function zoomMapIn() { zoomMapTowards(true, false); }
+function zoomMapOut() { zoomMapTowards(false, false); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  
+  if (e.key === '+' || e.key === '=' || e.key === 'i' || e.key === 'I') {
+    zoomMapTowards(true, true);
+  } else if (e.key === '-' || e.key === '_' || e.key === 'o' || e.key === 'O') {
+    zoomMapTowards(false, true);
+  }
+});

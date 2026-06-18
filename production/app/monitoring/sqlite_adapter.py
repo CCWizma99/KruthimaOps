@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS forecast_cache (
 
 
 def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(SQLITE_DB_PATH)
+    c = sqlite3.connect(SQLITE_DB_PATH, timeout=15.0)
     c.row_factory = sqlite3.Row
     return c
 

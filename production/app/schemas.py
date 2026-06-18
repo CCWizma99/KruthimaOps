@@ -1,5 +1,5 @@
 """
-FloodGuard SL — Shared Data Contracts (Pydantic Schemas)
+Flood Timeline — Shared Data Contracts (Pydantic Schemas)
 All layers communicate through these schemas — no layer imports
 another layer's internal types directly.
 """

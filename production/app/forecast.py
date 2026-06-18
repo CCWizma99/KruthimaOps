@@ -70,7 +70,7 @@ def get_district_forecast(district: str) -> List[Dict[str, Any]]:
     )
 
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "FloodGuardSL-Predictor/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Flood TimelineSL-Predictor/1.0"})
         with urllib.request.urlopen(req, timeout=8) as response:
             res_data = json.loads(response.read().decode())
         daily_time   = res_data["daily"]["time"]
@@ -193,7 +193,7 @@ def get_historical_forecast(district: str, target_date_str: str) -> Dict[str, An
     )
 
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "FloodGuardSL-Historical/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Flood TimelineSL-Historical/1.0"})
         with urllib.request.urlopen(req, timeout=12) as response:
             res_data = json.loads(response.read().decode())
         daily_time   = res_data["daily"]["time"]
@@ -302,7 +302,7 @@ def get_historical_forecasts_batched(districts_list: list[str], target_date_str:
 
     results = {}
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "FloodGuardSL-HistoricalBatch/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Flood TimelineSL-HistoricalBatch/1.0"})
         with urllib.request.urlopen(req, timeout=15) as response:
             res_data = json.loads(response.read().decode())
             

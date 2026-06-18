@@ -1,6 +1,6 @@
-# FloodGuard SL — Evacuation Safe-Zone Module
+# Flood Timeline — Evacuation Safe-Zone Module
 
-This is a standalone evacuation/safe-zone module for FloodGuard SL. Keep it under `production/evacuation/` so it does not conflict with the main FastAPI flood prediction app.
+This is a standalone evacuation/safe-zone module for Flood Timeline. Keep it under `production/evacuation/` so it does not conflict with the main FastAPI flood prediction app.
 
 ## What it includes
 
@@ -57,7 +57,7 @@ http://127.0.0.1:5000
 The admin key is read from `.env`:
 
 ```text
-FLOODGUARD_ADMIN_KEY=changeme-floodguard
+FLOODGUARD_ADMIN_KEY=changeme-flood-timeline
 ```
 
 Change this before demo. Do not commit `.env` to GitHub.
@@ -89,7 +89,7 @@ $body = @{
 Invoke-RestMethod `
   -Uri "http://127.0.0.1:5000/api/points" `
   -Method Post `
-  -Headers @{"X-Admin-Key"="changeme-floodguard"} `
+  -Headers @{"X-Admin-Key"="changeme-flood-timeline"} `
   -Body $body `
   -ContentType "application/json"
 ```
@@ -98,5 +98,5 @@ Invoke-RestMethod `
 
 - `evacuation.js` was renamed to `sw.js` because the HTML and backend expect `/sw.js`.
 - This is a separate Flask server on port `5000`.
-- The main FloodGuard prediction app still runs with FastAPI on port `8000`.
+- The main Flood Timeline prediction app still runs with FastAPI on port `8000`.
 - For final integration, this can later be converted into FastAPI routes under `production/app/main.py`.

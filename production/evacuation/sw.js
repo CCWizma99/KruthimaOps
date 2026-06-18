@@ -1,6 +1,6 @@
-// FloodGuard SL service worker — caches OSM raster tiles
+// Flood Timeline service worker — caches OSM raster tiles
 
-const TILE_CACHE = 'floodguard-tiles-v1';
+const TILE_CACHE = 'flood-timeline-tiles-v1';
 const TILE_HOSTS = ['a.tile.openstreetmap.org', 'b.tile.openstreetmap.org', 'c.tile.openstreetmap.org'];
 
 self.addEventListener('install', (event) => {

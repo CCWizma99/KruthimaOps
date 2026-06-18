@@ -37,9 +37,9 @@ def _risk_label(score: float) -> str:
     return "EXTREME"
 
 
-def brief(score: float, features: dict) -> str:
+async def brief(score: float, features: dict) -> str:
     """
-    Generate a 3-4 sentence plain-language safety briefing.
+    Generate a 3-4 sentence plain-language safety briefing asynchronously.
     Returns empty string if Gemini is unavailable.
     """
     client = _get_client()
@@ -69,7 +69,7 @@ The advisory must:
 Keep it under 80 words total. Be direct and actionable."""
 
     try:
-        response = client.generate_content(prompt)
+        response = await client.generate_content_async(prompt)
         return response.text.strip()
     except Exception as e:
         logger.warning(f"Gemini generation failed: {e}")

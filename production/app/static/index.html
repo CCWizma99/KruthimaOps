@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FloodGuard SL — Flood Risk Command Dashboard</title>
+  <title>Flood Timeline — Flood Risk Command Dashboard</title>
   <meta name="description" content="Real-time AI-powered flood risk simulation and command dashboard for Sri Lanka. Powered by the v1000 ensemble ML model." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -12,15 +12,16 @@
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.122/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="manifest" href="/static/manifest.json" />
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
 
 <!-- ═══════════════════════════════════════════════════ HEADER ══ -->
 <header class="app-header">
   <div class="header-brand">
-    <div class="brand-icon">🌊</div>
+    <div class="brand-icon"><i data-lucide="waves" class="icon-lg"></i></div>
     <div class="brand-text">
-      <span class="brand-name">FloodGuard SL</span>
+      <span class="brand-name">Flood Timeline</span>
       <span class="brand-sub">Flood Risk Command Dashboard</span>
     </div>
   </div>
@@ -39,7 +40,7 @@
       <span id="model-version-label">Loading model...</span>
     </div>
     <div class="status-chip refresh-chip" id="refresh-chip" title="Last time data was synced from the server">
-      <span class="refresh-icon">🔄</span>
+      <span class="refresh-icon"><i data-lucide="refresh-cw" class="icon-sm"></i></span>
       <span id="last-refresh-label">—</span>
     </div>
     <div class="status-chip live-chip">
@@ -56,7 +57,7 @@
   <aside class="control-panel" id="control-panel">
 
     <div class="panel-section">
-      <label class="field-label">📍 District</label>
+      <label class="field-label"><i data-lucide="map-pin" class="icon-sm"></i> District</label>
       <div class="select-wrapper">
         <select id="district-select" class="styled-select">
           <option value="">Select district...</option>
@@ -67,7 +68,7 @@
     <div class="divider"></div>
 
     <div class="panel-section">
-      <label class="field-label">🗺️ Map Layers</label>
+      <label class="field-label"><i data-lucide="layers" class="icon-sm"></i> Map Layers</label>
       <div class="toggle-row" style="margin-top: 8px;">
         <label class="toggle-checkbox">
           <input type="checkbox" id="toggle-evacuation-points" onchange="toggleEvacuationPoints(this.checked)" style="margin-right: 8px;">
@@ -78,19 +79,23 @@
 
     <div class="divider"></div>
 
+    <a href="/evacuation" class="simulate-btn" style="background: rgba(45, 212, 191, 0.1); border-color: rgba(45, 212, 191, 0.4); text-decoration: none; display: flex; justify-content: center; align-items: center; margin-bottom: 12px; color: var(--text-primary);">
+      <i data-lucide="map" class="icon-sm" style="margin-right:8px"></i> Open Evacuation Module
+    </a>
+
     <button class="simulate-btn" id="simulate-btn" onclick="openWhatIfModal()" disabled>
-      ⚡ Simulate Scenario
+      <i data-lucide="zap" class="icon-sm" style="margin-right:8px"></i> Simulate Scenario
     </button>
 
     <div class="divider"></div>
 
     <!-- Historical Simulation / Time Travel -->
     <div class="panel-section">
-      <label class="field-label">🕰️ Time Travel</label>
+      <label class="field-label"><i data-lucide="clock" class="icon-sm"></i> Time Travel</label>
       <p class="field-hint">Pick a past date to backtest predictions using actual historical weather data.</p>
       <input type="date" id="historical-date" class="styled-date-input" />
       <button class="historical-btn" id="historical-btn" onclick="runHistoricalSimulation()">
-        <span id="hist-btn-text">⏪ Run Historical</span>
+        <span id="hist-btn-text"><i data-lucide="rewind" class="icon-sm" style="margin-right:6px"></i> Run Historical</span>
         <div class="btn-loader" id="hist-btn-loader" style="display:none"></div>
       </button>
     </div>
@@ -98,20 +103,20 @@
     <!-- Historical mode active banner -->
     <div class="historical-active-banner" id="historical-active-banner" style="display:none">
       <div class="hist-banner-info">
-        <span class="hist-banner-icon">🕰️</span>
+        <span class="hist-banner-icon"><i data-lucide="history" class="icon-lg"></i></span>
         <div class="hist-banner-text">
           <span class="hist-banner-title" id="hist-banner-title">Historical Mode</span>
           <span class="hist-banner-date" id="hist-banner-date">—</span>
         </div>
       </div>
-      <button class="hist-return-btn" onclick="returnToLive()">↩ Return to Live</button>
+      <button class="hist-return-btn" onclick="returnToLive()"><i data-lucide="corner-up-left" class="icon-sm" style="margin-right:4px"></i> Return to Live</button>
     </div>
 
     <div class="divider"></div>
 
     <!-- Compact model registry -->
     <div class="model-mini-card">
-      <div class="model-mini-header">📊 Model Registry</div>
+      <div class="model-mini-header"><i data-lucide="bar-chart-2" class="icon-sm"></i> Model Registry</div>
       <div class="model-stat-row">
         <span class="stat-label">Pipeline</span>
         <span class="stat-value" id="stat-pipeline">—</span>
@@ -142,7 +147,7 @@
 
     <!-- Batch Upload -->
     <div class="panel-section">
-      <label class="field-label">📤 Batch Upload</label>
+      <label class="field-label"><i data-lucide="upload-cloud" class="icon-sm"></i> Batch Upload</label>
       <div class="drop-zone" id="drop-zone" onclick="document.getElementById('csv-input').click()">
         <span>Drop CSV or click to upload</span>
         <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="handleBatchUpload(event)" />
@@ -177,12 +182,22 @@
     </div>
 
     <!-- My Location button -->
-    <button class="my-location-btn" id="my-location-btn" onclick="toggleMyLocation()" title="Show my location">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <button class="map-zoom-btn my-location-btn" id="my-location-btn" onclick="toggleMyLocation()" title="Show my location" style="position: absolute; bottom: 50px; right: 16px; z-index: 10; border-radius: 50%; width: 42px; height: 42px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="3"/>
         <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
       </svg>
     </button>
+    
+    <!-- Zoom controls -->
+    <div class="map-zoom-controls" style="position: absolute; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 10;">
+      <button onclick="zoomMapIn()" title="Zoom In (+ or i)" style="width: 36px; height: 36px; background: rgba(10, 22, 40, 0.85); backdrop-filter: blur(10px); border: 1px solid var(--border, #1a2f4a); border-radius: 6px; color: #e2e8f0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+      <button onclick="zoomMapOut()" title="Zoom Out (- or o)" style="width: 36px; height: 36px; background: rgba(10, 22, 40, 0.85); backdrop-filter: blur(10px); border: 1px solid var(--border, #1a2f4a); border-radius: 6px; color: #e2e8f0; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>
+      </button>
+    </div>
 
     <!-- Click hint -->
     <div class="map-click-hint" id="map-click-hint">
@@ -195,7 +210,7 @@
 <!-- ══════════════════════════════════════ ACTIVITY LOG ══ -->
 <section class="activity-log" id="activity-log">
   <div class="log-header">
-    <span>📋 Activity Log</span>
+    <span><i data-lucide="list" class="icon-sm"></i> Activity Log</span>
     <button class="export-btn" onclick="exportLog()">Export CSV ↓</button>
   </div>
   <div class="log-table-wrapper">
@@ -232,8 +247,8 @@
       <span class="district-modal-sub" id="modal-district-sub">Click on the map or select from the dropdown</span>
     </div>
     <div class="district-modal-actions">
-      <button class="modal-simulate-btn" id="modal-simulate-btn" onclick="openWhatIfModal()">⚡ Simulate</button>
-      <button class="modal-report-btn" id="modal-report-btn" onclick="downloadReport()" disabled>📄 Report</button>
+      <button class="modal-simulate-btn" id="modal-simulate-btn" onclick="openWhatIfModal()"><i data-lucide="zap" class="icon-sm"></i> Simulate</button>
+      <button class="modal-report-btn" id="modal-report-btn" onclick="downloadReport()" disabled><i data-lucide="file-text" class="icon-sm"></i> Report</button>
       <button class="modal-close-btn" onclick="closeDistrictModal()">✕</button>
     </div>
   </div>
@@ -259,7 +274,7 @@
 
     <!-- CENTER: 7-day forecast list -->
     <div class="modal-forecast-col">
-      <div class="modal-section-label">📅 7-Day Risk Forecast</div>
+      <div class="modal-section-label"><i data-lucide="calendar" class="icon-sm"></i> 7-Day Risk Forecast</div>
       <div class="modal-forecast-list" id="modal-forecast-body">
         <div class="modal-forecast-placeholder">Select a district to view its 7-day outlook.</div>
       </div>
@@ -267,19 +282,19 @@
 
     <!-- RIGHT: AI briefing + feedback -->
     <div class="modal-briefing-col">
-      <div class="modal-section-label">🤖 AI Safety Briefing</div>
+      <div class="modal-section-label"><i data-lucide="cpu" class="icon-sm"></i> AI Safety Briefing</div>
       <div class="modal-briefing-text" id="modal-briefing-text">
         Run a prediction or select a forecast day to receive an AI-generated safety advisory.
       </div>
-      <div class="modal-section-label" style="margin-top: 8px;">🛡️ Nearest Safe Zone</div>
+      <div class="modal-section-label" style="margin-top: 8px;"><i data-lucide="shield" class="icon-sm"></i> Nearest Safe Zone</div>
       <div class="modal-briefing-text" id="modal-safezone-text" style="color: var(--accent-cyan); font-weight: 500;">
         Select a district to view the nearest safe zone.
       </div>
       <div class="modal-warnings" id="modal-warnings" style="display:none"></div>
       <div class="modal-feedback-row" id="modal-feedback-row" style="display:none">
         <span class="feedback-label">Was this accurate?</span>
-        <button class="feedback-btn positive" id="btn-thumbup" onclick="submitFeedback('accurate')">👍</button>
-        <button class="feedback-btn negative" id="btn-thumbdown" onclick="submitFeedback('inaccurate')">👎</button>
+        <button class="feedback-btn positive" id="btn-thumbup" onclick="submitFeedback('accurate')"><i data-lucide="thumbs-up" class="icon-sm"></i></button>
+        <button class="feedback-btn negative" id="btn-thumbdown" onclick="submitFeedback('inaccurate')"><i data-lucide="thumbs-down" class="icon-sm"></i></button>
       </div>
     </div>
 
@@ -292,7 +307,7 @@
 
   <div class="whatif-modal-header">
     <div class="whatif-title-group">
-      <span class="whatif-title">⚡ Scenario Simulator</span>
+      <span class="whatif-title"><i data-lucide="zap" class="icon-sm"></i> Scenario Simulator</span>
       <span class="whatif-district-chip" id="whatif-district-chip">No district selected</span>
     </div>
     <button class="modal-close-btn" onclick="closeWhatIfModal()">✕</button>
@@ -353,7 +368,7 @@
 
   <div class="whatif-modal-footer">
     <button class="predict-btn" id="predict-btn" onclick="runPrediction()">
-      <span id="btn-text">⚡ Analyse Risk</span>
+      <span id="btn-text"><i data-lucide="activity" class="icon-sm"></i> Analyse Risk</span>
       <div class="btn-loader" id="btn-loader" style="display:none"></div>
     </button>
 
@@ -377,7 +392,7 @@
       </div>
       <div class="whatif-briefing" id="whatif-briefing">—</div>
       <div class="whatif-warnings-list" id="whatif-warnings" style="display:none"></div>
-      <button class="whatif-report-btn" id="whatif-report-btn" onclick="downloadReport()" style="display:none">📄 Download PDF Report</button>
+      <button class="whatif-report-btn" id="whatif-report-btn" onclick="downloadReport()" style="display:none"><i data-lucide="file-text" class="icon-sm"></i> Download PDF Report</button>
     </div>
   </div>
 
@@ -397,5 +412,6 @@
   }
 </script>
 <script src="/static/app.js?v=1.2.9"></script>
+  <script>lucide.createIcons();</script>
 </body>
 </html>

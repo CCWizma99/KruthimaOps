@@ -44,6 +44,8 @@ from sklearn.neighbors import KNeighborsRegressor
 import xgboost as xgb
 import catboost as cb
 import lightgbm as lgb
+import optuna
+from sklearn.model_selection import GroupShuffleSplit
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -449,11 +451,6 @@ cat_feature_names = [c for c in CAT_FEATURES if c in BASE_FEATURES]
 # Global stats from real rows only
 y          = train_df[TARGET]
 real_mask  = train_df['is_pseudo'] == 0
-GLOBAL_MEAN   = float(y[real_mask].mean())
-GLOBAL_STD    = float(y[real_mask].std())
-GLOBAL_Q25    = float(y[real_mask].quantile(0.25))
-GLOBAL_Q75    = float(y[real_mask].quantile(0.75))
-GLOBAL_MEDIAN = float(y[real_mask].median())
 
 downstream_cols = [
     "confirmed_severe_risk", "no_flood_confirmed", "inundation_per_capita", "downstream_risk_count",
@@ -526,6 +523,14 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
     tr_rows = train_df.iloc[tr_idx].copy()
     va_rows = train_df.iloc[va_idx_clean].copy()
 
+    # Compute target stats strictly within tr_rows to prevent leak
+    real_tr = tr_rows[tr_rows['is_pseudo'] == 0]
+    GLOBAL_MEAN   = float(real_tr[TARGET].mean())
+    GLOBAL_STD    = float(real_tr[TARGET].std())
+    GLOBAL_Q25    = float(real_tr[TARGET].quantile(0.25))
+    GLOBAL_Q75    = float(real_tr[TARGET].quantile(0.75))
+    GLOBAL_MEDIAN = float(real_tr[TARGET].median())
+
     # Conflict resolution
     temp_tr = tr_rows[conflict_key_cols].copy()
     for col in temp_tr.columns:
@@ -588,6 +593,18 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
     X_va_cat = to_cat_fmt_local(X_va, cat_cols)
     X_te_cat = to_cat_fmt_local(X_te, cat_cols)
 
+    # Inner Split for Early Stopping (Meta-Overfit Fix)
+    gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=SEED+fold)
+    inner_tr_idx, inner_es_idx = next(gss.split(X_tr, y_tr, groups=tr_rows['grid_id']))
+    
+    X_inner_tr = X_tr.iloc[inner_tr_idx]
+    y_inner_tr = y_tr.iloc[inner_tr_idx]
+    X_inner_es = X_tr.iloc[inner_es_idx]
+    y_inner_es = y_tr.iloc[inner_es_idx]
+    
+    X_inner_tr_xgb = to_xgb_fmt(X_inner_tr); X_inner_es_xgb = to_xgb_fmt(X_inner_es)
+    X_inner_tr_cat = to_cat_fmt_local(X_inner_tr, cat_cols); X_inner_es_cat = to_cat_fmt_local(X_inner_es, cat_cols)
+
     for col in cat_cols:
         cdt = pd.CategoricalDtype(categories=cat_dtype_map[col], ordered=False)
         X_tr[col] = X_tr[col].astype(str).astype(cdt)
@@ -603,7 +620,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         random_state=SEED, n_jobs=-1,
         early_stopping_rounds=50
     )
-    xgb_m1.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
+    xgb_m1.fit(X_inner_tr_xgb, y_inner_tr, eval_set=[(X_inner_es_xgb, y_inner_es)], verbose=False)
 
     # Model 2: CAT-MAE-1 (d5)
     cat_m1 = cb.CatBoostRegressor(
@@ -612,8 +629,8 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         loss_function="RMSE", eval_metric="RMSE", task_type="CPU",
         random_seed=SEED, verbose=False
     )
-    cat_m1.fit(X_tr_cat, y_tr, cat_features=cat_cols,
-               eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
+    cat_m1.fit(X_inner_tr_cat, y_inner_tr, cat_features=cat_cols,
+               eval_set=(X_inner_es_cat, y_inner_es), early_stopping_rounds=150, verbose=False)
 
     # Model 3: CAT-MAE-2 (d5)
     cat_m2 = cb.CatBoostRegressor(
@@ -622,8 +639,8 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         loss_function="RMSE", eval_metric="RMSE", task_type="CPU",
         random_seed=SEED + 1, verbose=False
     )
-    cat_m2.fit(X_tr_cat, y_tr, cat_features=cat_cols,
-               eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
+    cat_m2.fit(X_inner_tr_cat, y_inner_tr, cat_features=cat_cols,
+               eval_set=(X_inner_es_cat, y_inner_es), early_stopping_rounds=150, verbose=False)
 
     # Model 4: CAT-RMSE (d5)
     cat_rmse = cb.CatBoostRegressor(
@@ -632,8 +649,8 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         loss_function="RMSE", eval_metric="RMSE", task_type="CPU",
         random_seed=SEED + 2, verbose=False
     )
-    cat_rmse.fit(X_tr_cat, y_tr, cat_features=cat_cols,
-                 eval_set=(X_va_cat, y_va), early_stopping_rounds=150, verbose=False)
+    cat_rmse.fit(X_inner_tr_cat, y_inner_tr, cat_features=cat_cols,
+                 eval_set=(X_inner_es_cat, y_inner_es), early_stopping_rounds=150, verbose=False)
 
     # Model 5: LGB-MAE (d5)
     lgb_m1 = lgb.LGBMRegressor(
@@ -642,7 +659,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         reg_alpha=0.5, reg_lambda=1.0, objective="regression",
         random_state=SEED, n_jobs=-1, verbose=-1
     )
-    lgb_m1.fit(X_tr, y_tr, eval_set=[(X_va, y_va)],
+    lgb_m1.fit(X_inner_tr, y_inner_tr, eval_set=[(X_inner_es, y_inner_es)],
                callbacks=[lgb.early_stopping(150, verbose=False)])
 
     # Model 6: XGB-MAE-2 (d5)
@@ -653,7 +670,7 @@ for fold, (tr_idx, va_idx) in enumerate(gkf.split(train_df, y, groups)):
         objective="reg:squarederror", eval_metric="rmse", tree_method="hist",
         enable_categorical=False, early_stopping_rounds=100, random_state=SEED + 3, n_jobs=-1
     )
-    xgb_m2.fit(X_tr_xgb, y_tr, eval_set=[(X_va_xgb, y_va)], verbose=False)
+    xgb_m2.fit(X_inner_tr_xgb, y_inner_tr, eval_set=[(X_inner_es_xgb, y_inner_es)], verbose=False)
 
     # OOF predictions
     oof_preds["XGB-MAE-1 (d7)"][va_idx_clean] = xgb_m1.predict(X_va_xgb)
@@ -694,8 +711,8 @@ print("\n[STACK] Running L2 alpha grid search...")
 oof_meta = np.column_stack([oof_preds[m][real_mask] for m in MODEL_NAMES])
 tst_meta = np.column_stack([tst_preds[m] for m in MODEL_NAMES])
 
-best_alpha, best_score = 0.0, np.inf
-for alpha in [0.0, 0.0001, 0.001, 0.01]:
+def objective(trial):
+    alpha = trial.suggest_float("alpha", 1e-6, 1e1, log=True)
     oof_cv = np.zeros(len(original_y))
     for fold, (tr_l2, va_l2) in enumerate(gkf_l2.split(original_df, original_y, original_groups)):
         w_cv, b_cv = fit_metric_stacker(oof_meta[tr_l2], original_y[tr_l2], alpha=alpha)
@@ -703,10 +720,14 @@ for alpha in [0.0, 0.0001, 0.001, 0.01]:
     cv_mae  = mean_absolute_error(original_y, oof_cv)
     cv_rmse = root_mean_squared_error(original_y, oof_cv)
     cv_ev   = explained_variance_score(original_y, oof_cv)
-    cv_score = (c_mae * cv_mae + c_rmse * cv_rmse) * (1.0 + c_ev * (1.0 - cv_ev))
-    if cv_score < best_score:
-        best_score = cv_score
-        best_alpha = alpha
+    return (c_mae * cv_mae + c_rmse * cv_rmse) * (1.0 + c_ev * (1.0 - cv_ev))
+
+optuna.logging.set_verbosity(optuna.logging.WARNING)
+study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=SEED))
+study.optimize(objective, n_trials=50)
+
+best_alpha = study.best_params["alpha"]
+best_score = study.best_value
 print(f"   Best alpha: {best_alpha} | Nested CV Score: {best_score:.5f}")
 
 oof_stacked = np.zeros(len(original_y))
@@ -752,6 +773,14 @@ print(f"   Opt.LB={opt_lb:.5f} | MAE={opt_mae:.5f} RMSE={opt_rmse:.5f} EV={opt_e
 # ============================================================
 print("\n[SERIALIZE] Computing full-dataset target encoding maps...")
 real_train_full = train_df[real_mask].copy()
+
+# Recompute globals for the full dataset before saving te_maps
+GLOBAL_MEAN   = float(real_train_full[TARGET].mean())
+GLOBAL_STD    = float(real_train_full[TARGET].std())
+GLOBAL_Q25    = float(real_train_full[TARGET].quantile(0.25))
+GLOBAL_Q75    = float(real_train_full[TARGET].quantile(0.75))
+GLOBAL_MEDIAN = float(real_train_full[TARGET].median())
+
 te_maps = {}
 all_te_cols_full = TARGET_ENC_COLS + COMPOSITE_ENC_COLS
 

@@ -1,6 +1,6 @@
 {
-  "name": "FloodGuard SL",
-  "short_name": "FloodGuard",
+  "name": "Flood Timeline",
+  "short_name": "Flood Timeline",
   "description": "Flood Risk Command Dashboard",
   "start_url": "/",
   "display": "standalone",

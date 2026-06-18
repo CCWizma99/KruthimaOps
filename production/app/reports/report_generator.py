@@ -1,5 +1,5 @@
 """
-FloodGuard SL - PDF Report Generator
+Flood Timeline - PDF Report Generator
 Generates a professional flood-risk report from a stored prediction.
 
 This module intentionally imports ReportLab inside the function so the API can
@@ -121,7 +121,7 @@ def build_prediction_report_pdf(
         leftMargin=1.7 * cm,
         topMargin=1.4 * cm,
         bottomMargin=1.4 * cm,
-        title="FloodGuard SL Prediction Report",
+        title="Flood Timeline Prediction Report",
     )
 
     styles = getSampleStyleSheet()
@@ -224,7 +224,7 @@ def build_prediction_report_pdf(
     risk_color = risk_colors.get(level, colors.HexColor("#475569"))
 
     story = []
-    story.append(Paragraph("FloodGuard SL - Prediction Report", styles["ReportTitle"]))
+    story.append(Paragraph("Flood Timeline - Prediction Report", styles["ReportTitle"]))
     story.append(Paragraph(
         "AI-powered flood risk decision-support report generated from the production monitoring log.",
         styles["SmallMuted"],
@@ -364,7 +364,7 @@ def build_prediction_report_pdf(
 
     story.append(Spacer(1, 8))
     story.append(Paragraph(
-        "Disclaimer: FloodGuard SL is a competition prototype and decision-support tool. "
+        "Disclaimer: Flood Timeline is a competition prototype and decision-support tool. "
         "It must not replace official disaster warnings, field observations, or government instructions.",
         styles["SmallMuted"],
     ))

@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   FloodGuard SL — Premium Dark Dashboard CSS
+   Flood Timeline — Premium Dark Dashboard CSS
    ═══════════════════════════════════════════════════════════════════ */
 
 :root {
@@ -1246,3 +1246,113 @@ html, body {
   0%, 100% { box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
   50%      { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4); }
 }
+
+/* ── MAP ZOOM CONTROLS ─────────────────────────────────────── */
+.map-zoom-controls {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+.map-zoom-btn {
+  width: 36px;
+  height: 36px;
+  background: rgba(10, 22, 40, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.map-zoom-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   PREMIUM GLASSMORPHISM & ANIMATION OVERRIDES
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 1. Dynamic Mesh Background */
+body {
+  background: radial-gradient(circle at 15% 50%, rgba(34, 211, 238, 0.08), transparent 25%),
+              radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.1), transparent 25%),
+              var(--bg-base);
+  background-size: 200% 200%;
+  animation: meshPan 20s ease infinite;
+}
+
+@keyframes meshPan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 2. Glassmorphism for Panels */
+:root {
+  --bg-surface: rgba(10, 22, 40, 0.55);
+  --bg-card: rgba(15, 30, 53, 0.65);
+}
+
+.app-header, .control-panel, .activity-log, .district-modal, .whatif-modal, .legend, .district-count-chip {
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* 3. Floating Left Panel & Bottom Log */
+.dashboard-grid {
+  grid-template-columns: calc(var(--panel-w) + 24px) 1fr !important;
+  padding: 12px 12px 12px 0;
+  gap: 12px;
+}
+.control-panel {
+  margin: 0 0 0 12px;
+  border-radius: var(--radius-lg);
+  border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.map-section {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.activity-log {
+  margin: 0 12px 12px 12px;
+  border-radius: var(--radius-lg);
+  border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 4. Button Micro-Animations & Typography Glows */
+.simulate-btn, .historical-btn, .map-zoom-btn, .my-location-btn, .predict-btn {
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.simulate-btn:hover:not(:disabled), .historical-btn:hover:not(:disabled), .predict-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px var(--accent-glow);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.stat-value, .brand-name {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+}
+
+/* 5. Lucide Icon Alignments */
+.lucide {
+  vertical-align: text-bottom;
+  stroke-width: 2;
+}
+.icon-sm { width: 14px; height: 14px; display: inline-block; }
+.icon-lg { width: 22px; height: 22px; display: inline-block; }

@@ -1,5 +1,5 @@
 """
-FloodGuard SL — FastAPI Orchestrator
+Flood Timeline — FastAPI Orchestrator
 Thin layer that wires the 4 independent modules:
   validate → infer → monitor → brief → respond
 
@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
     load_artifacts()
     logger.info("[Startup] Launching background precompute thread...")
     threading.Thread(target=_bg_precompute_all_forecasts, daemon=True).start()
-    logger.info("[Startup] FloodGuard SL is ready.")
+    logger.info("[Startup] Flood Timeline is ready.")
     yield
     # Shutdown (nothing to do)
 
@@ -114,6 +114,9 @@ import os
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+from app.api_evacuation import router as evacuation_router
+app.include_router(evacuation_router)
 
 
 # ── Global error handler ──────────────────────────────────────────────
@@ -143,7 +146,7 @@ async def dashboard():
     if os.path.exists(index):
         with open(index, encoding="utf-8") as f:
             return f.read()
-    return HTMLResponse("<h1>FloodGuard SL API is running.</h1><p>Frontend not built yet.</p>")
+    return HTMLResponse("<h1>Flood Timeline API is running.</h1><p>Frontend not built yet.</p>")
 
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker():
@@ -175,8 +178,10 @@ async def api_diagnostics():
 
 # ── Single Prediction ────────────────────────────────────────────────
 
+from fastapi import BackgroundTasks
+
 @app.post("/api/predict", response_model=PredictResponse, tags=["Inference"])
-async def predict(payload: PredictRequest):
+async def predict(payload: PredictRequest, background_tasks: BackgroundTasks = None):
     prediction_id = str(uuid.uuid4())
     t0 = perf_counter()
 
@@ -202,25 +207,29 @@ async def predict(payload: PredictRequest):
     # 3. Monitor
     lat = clean_data.get("latitude") or 7.8731
     lon = clean_data.get("longitude") or 80.7718
-    log_prediction(
-        prediction_id=prediction_id,
-        district=clean_data["district"],
-        latitude=lat,
-        longitude=lon,
-        rainfall_7d=clean_data["rainfall_7d_mm"],
-        flood_occurrence=clean_data["flood_occurrence_current_event"],
-        inundation_area=clean_data["inundation_area_sqm"],
-        is_good_to_live=clean_data["is_good_to_live"],
-        risk_score=score,
-        risk_level=risk_lvl,
-        latency_ms=latency_ms,
-        warnings=warnings,
-    )
+    if background_tasks:
+        background_tasks.add_task(
+            log_prediction,
+            prediction_id=prediction_id,
+            district=clean_data["district"],
+            latitude=lat,
+            longitude=lon,
+            rainfall_7d=clean_data["rainfall_7d_mm"],
+            flood_occurrence=clean_data["flood_occurrence_current_event"],
+            inundation_area=clean_data["inundation_area_sqm"],
+            is_good_to_live=clean_data["is_good_to_live"],
+            risk_score=score,
+            risk_level=risk_lvl,
+            latency_ms=latency_ms,
+            warnings=warnings,
+        )
+    else:
+        log_prediction(prediction_id=prediction_id, district=clean_data["district"], latitude=lat, longitude=lon, rainfall_7d=clean_data["rainfall_7d_mm"], flood_occurrence=clean_data["flood_occurrence_current_event"], inundation_area=clean_data["inundation_area_sqm"], is_good_to_live=clean_data["is_good_to_live"], risk_score=score, risk_level=risk_lvl, latency_ms=latency_ms, warnings=warnings)
 
     # 4. AI Briefing (non-blocking — return even if it fails)
     briefing_text = ""
     try:
-        briefing_text = brief(score, clean_data)
+        briefing_text = await brief(score, clean_data)
     except Exception:
         pass
 
@@ -300,7 +309,7 @@ async def prediction_report(prediction_id: str):
             "latitude": prediction.get("latitude"),
             "longitude": prediction.get("longitude"),
         }
-        ai_comment = brief(float(prediction.get("risk_score") or 0.0), report_features)
+        ai_comment = await brief(float(prediction.get("risk_score") or 0.0), report_features)
     except Exception as exc:
         logger.warning("[Report] AI comment generation failed: %s", exc)
 
@@ -317,7 +326,7 @@ async def prediction_report(prediction_id: str):
 
     short_id = prediction_id.split("-")[0]
     headers = {
-        "Content-Disposition": f'attachment; filename="FloodGuard_SL_Report_{short_id}.pdf"'
+        "Content-Disposition": f'attachment; filename="Flood Timeline_SL_Report_{short_id}.pdf"'
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
@@ -421,6 +430,34 @@ async def forecast_precompute_status():
     return _precompute_status
 
 
+import asyncio
+from fastapi.responses import StreamingResponse
+
+@app.get("/api/forecasts/stream", tags=["Forecast"])
+async def forecast_precompute_stream():
+    """Server-Sent Events endpoint to push precompute progress to the frontend."""
+    async def event_generator():
+        import json
+        last_ready = -1
+        while True:
+            if _precompute_status["ready"] != last_ready:
+                last_ready = _precompute_status["ready"]
+                from datetime import date
+                today = date.today().isoformat()
+                data = _get_all_today_forecasts(today)
+                payload = {
+                    "date": today,
+                    "districts": data,
+                    "ready": last_ready,
+                    "total": _precompute_status["total"] or len(get_district_reference())
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+            if _precompute_status["complete"] and last_ready == _precompute_status["total"]:
+                break
+            await asyncio.sleep(0.5)
+            
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 @app.get("/api/forecasts/today", tags=["Forecast"])
 async def all_today_district_forecasts():
     """
@@ -510,7 +547,7 @@ async def predict_subdivisions(district_name: str, date: str = None):
         )
     
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "FloodGuardSL"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Flood TimelineSL"})
         with urllib.request.urlopen(req, timeout=10) as response:
             res_data = json.loads(response.read().decode())
     except Exception as e:
