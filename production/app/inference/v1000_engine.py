@@ -10,15 +10,26 @@ import lightgbm as lgb
 import catboost as cb
 
 from app.config import MODEL_VERSION, MODELS_BASE_DIR, DISTRICT_REFERENCE_PATH
+import app.inference.geospatial_mapper as geospatial_mapper
 
 logger = logging.getLogger(__name__)
 
 _MODELS = {}
 _FEATURE_INFO = None
 _DEM_PATH = "C:/KruthimaOps/data/dem/srilanka_srtm.tif"
+_STATION_COORDS = {}
+_OFFLINE_GAUGES = {}
 
 def load_artifacts() -> None:
-    global _MODELS, _FEATURE_INFO
+    global _MODELS, _FEATURE_INFO, _STATION_COORDS, _OFFLINE_GAUGES
+    
+    try:
+        with open('c:/KruthimaOps/data/station_coords.json') as f:
+            _STATION_COORDS = json.load(f)
+        with open('c:/KruthimaOps/data/offline_river_gauges.json') as f:
+            _OFFLINE_GAUGES = json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load offline gauges: {e}")
     
     base = os.path.join(MODELS_BASE_DIR, MODEL_VERSION)
     logger.info(f"[Inference] Loading lightweight {MODEL_VERSION} artifacts from {base} ...")
@@ -98,6 +109,24 @@ def infer(features_dict: dict) -> tuple[float, float]:
 
     row = dict(features_dict)
     
+    # 0. Historic river gauge integration
+    if "generation_date" in row and row["generation_date"]:
+        date_str = str(row["generation_date"]).split("T")[0]
+        if date_str in _OFFLINE_GAUGES:
+            # Fallbacks for lat/lon if not provided
+            meds = _FEATURE_INFO["medians"] if _FEATURE_INFO else {}
+            lat = float(row.get("latitude") if row.get("latitude") is not None else meds.get("latitude", 7.8731))
+            lon = float(row.get("longitude") if row.get("longitude") is not None else meds.get("longitude", 80.7718))
+            
+            gauge_dict = _OFFLINE_GAUGES[date_str]
+            station, dist, g_info = geospatial_mapper.find_closest_gauge(lat, lon, gauge_dict, _STATION_COORDS)
+            
+            if g_info:
+                row["nearest_gauge_distance_km"] = dist
+                row["gauge_water_level_m"] = g_info['water_level']
+                row["gauge_flood_ratio"] = g_info['water_level'] / (g_info['minor_flood'] + 0.001)
+                
+
     # 1. Fill missing features with medians
     features = _FEATURE_INFO["features"]
     cat_cols = _FEATURE_INFO["cat_cols"]

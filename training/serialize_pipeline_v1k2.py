@@ -94,6 +94,58 @@ train_df = train_df.drop_duplicates()
 print(f"   Train: {train_df.shape}  Test: {test_df.shape}")
 
 # ============================================================
+# 1.1. INTEGRATE OFFLINE RIVER GAUGE DATA
+# ============================================================
+print("\n[FEAT] Integrating Offline DMC River Gauge Data...")
+import geospatial_mapper
+with open('c:/KruthimaOps/data/station_coords.json') as f:
+    station_coords = json.load(f)
+
+offline_gauge_data = {}
+try:
+    with open('c:/KruthimaOps/data/offline_river_gauges.json') as f:
+        offline_gauge_data = json.load(f)
+except FileNotFoundError:
+    print("WARNING: offline_river_gauges.json not found! Run compile_offline_gauges.py first.")
+
+def attach_gauge_features(df, is_train=True):
+    dist_list, level_list, ratio_list = [], [], []
+    
+    if not is_train or 'generation_date' not in df.columns:
+        df['nearest_gauge_distance_km'] = np.nan
+        df['gauge_water_level_m'] = np.nan
+        df['gauge_flood_ratio'] = np.nan
+        return df
+
+    df['date_str'] = pd.to_datetime(df['generation_date']).dt.strftime('%Y-%m-%d')
+    
+    for idx, row in df.iterrows():
+        date_str = row['date_str']
+        lat, lon = row['latitude'], row['longitude']
+        
+        gauge_dict = offline_gauge_data.get(date_str, {})
+        station, dist, g_info = geospatial_mapper.find_closest_gauge(lat, lon, gauge_dict, station_coords)
+        
+        if g_info:
+            dist_list.append(dist)
+            level_list.append(g_info['water_level'])
+            ratio_list.append(g_info['water_level'] / (g_info['minor_flood'] + 0.001))
+        else:
+            dist_list.append(np.nan)
+            level_list.append(np.nan)
+            ratio_list.append(np.nan)
+            
+    df['nearest_gauge_distance_km'] = dist_list
+    df['gauge_water_level_m'] = level_list
+    df['gauge_flood_ratio'] = ratio_list
+    df = df.drop(columns=['date_str'])
+    return df
+
+train_df = attach_gauge_features(train_df, is_train=True)
+test_df = attach_gauge_features(test_df, is_train=False)
+
+
+# ============================================================
 # 1.3. PRECISION FINGERPRINTS
 # ============================================================
 print("\n[FEAT] Extracting coordinate decimal precision fingerprints...")

@@ -1,0 +1,158 @@
+{
+    "Nagalagam Street": {
+        "lat": 6.9543396,
+        "lon": 79.8758945
+    },
+    "Hanwella": {
+        "lat": 6.9088363,
+        "lon": 80.0817106
+    },
+    "Kithulgala": {
+        "lat": 6.9978725,
+        "lon": 80.4084927
+    },
+    "Deraniyagala": {
+        "lat": 6.9272729,
+        "lon": 80.3385122
+    },
+    "Norwood": {
+        "lat": 6.8389314,
+        "lon": 80.6122237
+    },
+    "Ellagawa": {
+        "lat": 6.757,
+        "lon": 80.1583
+    },
+    "Rathnapura": {
+        "lat": 6.7065423,
+        "lon": 80.3823988
+    },
+    "Kalawellawa": {
+        "lat": 6.6309714,
+        "lon": 80.1605069
+    },
+    "Baddegama": {
+        "lat": 6.1724812,
+        "lon": 80.1779163
+    },
+    "Thawalama": {
+        "lat": 6.3351777,
+        "lon": 80.3405806
+    },
+    "Panadugama": {
+        "lat": 6.1081,
+        "lon": 80.505
+    },
+    "Pitabeddara": {
+        "lat": 6.2011428,
+        "lon": 80.4740497
+    },
+    "Moraketiya": {
+        "lat": 6.8458168,
+        "lon": 79.9523451
+    },
+    "Thanamalwila": {
+        "lat": 6.4332859,
+        "lon": 81.1310436
+    },
+    "Wellawaya": {
+        "lat": 6.7317804,
+        "lon": 81.1018359
+    },
+    "Kuda Oya": {
+        "lat": 6.5693743,
+        "lon": 81.0718413
+    },
+    "Katharagama": {
+        "lat": 6.4144,
+        "lon": 81.334
+    },
+    "Nakkala": {
+        "lat": 6.8900462,
+        "lon": 81.2985758
+    },
+    "Siyambalanduwa": {
+        "lat": 6.9064021,
+        "lon": 81.5592089
+    },
+    "Padiyathalawa": {
+        "lat": 7.3916,
+        "lon": 81.161
+    },
+    "Manampitiya": {
+        "lat": 7.9088455,
+        "lon": 81.1119238
+    },
+    "Weraganthota": {
+        "lat": 7.3195,
+        "lon": 80.9922
+    },
+    "Peradeniya": {
+        "lat": 7.2642107,
+        "lon": 80.5930652
+    },
+    "Nawalapitiya": {
+        "lat": 7.0558938,
+        "lon": 80.5350145
+    },
+    "Thaldena": {
+        "lat": 7.0909632,
+        "lon": 81.047568
+    },
+    "Horowpothana": {
+        "lat": 8.5488887,
+        "lon": 80.823273
+    },
+    "Thanthirimale": {
+        "lat": 8.5720594,
+        "lon": 80.2527827
+    },
+    "Galgamuwa": {
+        "lat": 7.3111764,
+        "lon": 81.3928029
+    },
+    "Moragaswewa": {
+        "lat": 7.9465691,
+        "lon": 80.8858537
+    },
+    "Badalgama": {
+        "lat": 7.2864141,
+        "lon": 79.9855834
+    },
+    "Giriulla": {
+        "lat": 7.3299461,
+        "lon": 80.1225131
+    },
+    "Glencourse": {
+        "lat": 7.0,
+        "lon": 80.0
+    },
+    "Holombuwa": {
+        "lat": 7.0,
+        "lon": 80.0
+    },
+    "Putupaula": {
+        "lat": 7.0,
+        "lon": 80.0
+    },
+    "Magura": {
+        "lat": 7.0,
+        "lon": 80.0
+    },
+    "Thalgahagoda": {
+        "lat": 7.0,
+        "lon": 80.0
+    },
+    "Urawa": {
+        "lat": 7.0,
+        "lon": 80.0
+    },
+    "Yaka Wewa": {
+        "lat": 7.0,
+        "lon": 80.0
+    },
+    "Dunamale": {
+        "lat": 7.0,
+        "lon": 80.0
+    }
+}
