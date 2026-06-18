@@ -35,7 +35,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV=/Users/ravindu/Documents/KruthimaOps/production/venv
+VIRTUAL_ENV=/Users/ravindu/KruthimaOps/production/venv
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

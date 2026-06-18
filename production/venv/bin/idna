@@ -1,7 +1,6 @@
-#!/Users/ravindu/Documents/KruthimaOps/production/venv/bin/python3.11
+#!/Users/ravindu/KruthimaOps/production/venv/bin/python3.11
 import sys
 from idna.cli import main
 if __name__ == '__main__':
-    if sys.argv[0].endswith('.exe'):
-        sys.argv[0] = sys.argv[0][:-4]
+    sys.argv[0] = sys.argv[0].removesuffix('.exe')
     sys.exit(main())
