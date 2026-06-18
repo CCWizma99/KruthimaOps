@@ -506,7 +506,14 @@ function startPrecomputePolling() {
 
 // ════════════════════════════════════════════ DISTRICT SELECT ══
 function selectDistrict(name) {
+
   if (state.nationalViewActive) loadSubdivisions(name);
+
+  // Ensure activity log is closed when district modal opens (mobile)
+  const log = document.getElementById('activity-log');
+  if (log && log.classList.contains('mobile-visible')) {
+    toggleMobileLog();
+  }
 
   state.selectedDistrict = name;
 
@@ -534,6 +541,7 @@ function selectDistrict(name) {
 function openDistrictModal(name) {
   const modal = document.getElementById('district-modal');
   modal.classList.add('open');
+  document.body.classList.add('district-modal-open');
 
   // Set header info
   document.getElementById('modal-district-name').textContent = name;
@@ -581,6 +589,10 @@ function updateNearestSafeZone(districtName) {
 
 function closeDistrictModal() {
   document.getElementById('district-modal').classList.remove('open');
+  document.body.classList.remove('district-modal-open');
+  if (!state.nationalViewActive) {
+    restoreNationalView();
+  }
 }
 
 async function loadDistrictForecast(name) {
@@ -1691,6 +1703,12 @@ function toggleMobileLog() {
     log.classList.remove('mobile-visible');
     btn.classList.remove('active');
   } else {
+    // Close district modal if it's open to prevent overlap
+    const modal = document.getElementById('district-modal');
+    if (modal && modal.classList.contains('open')) {
+      closeDistrictModal();
+    }
+    
     log.classList.add('mobile-visible');
     btn.classList.add('active');
   }

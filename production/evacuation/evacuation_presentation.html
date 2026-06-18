@@ -1590,7 +1590,7 @@ async function refreshOfflineStatusLine() {
 
 btnCacheNow.addEventListener('click', async () => {
     btnCacheNow.disabled = true;
-    btnCacheNow.textContent = '⏳ Caching…';
+    btnCacheNow.innerHTML = '⏳ Caching…';
     try {
         const res = await fetch('/api/points');
         const data = await res.json();
@@ -1621,7 +1621,8 @@ btnCacheNow.addEventListener('click', async () => {
         alert('Could not cache data &mdash; check your connection and try again.');
     } finally {
         btnCacheNow.disabled = false;
-        btnCacheNow.textContent = '<i data-lucide="download" class="icon-sm"></i> Cache map & data';
+        btnCacheNow.innerHTML = '<i data-lucide="download" class="icon-sm"></i> Cache map &amp; data';
+        lucide.createIcons();
     }
 });
 

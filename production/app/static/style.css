@@ -143,6 +143,32 @@ html, body {
   font-weight: 500;
   color: var(--text-secondary);
 }
+
+/* My Location button — below zoom controls on desktop */
+.my-location-btn {
+  position: absolute;
+  top: 104px;
+  right: 16px;
+  z-index: 10;
+  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  background: rgba(10, 22, 40, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.my-location-btn:hover {
+  background: rgba(34, 211, 238, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
 .status-dot {
   width: 6px; height: 6px;
   background: var(--accent-cyan);
@@ -585,6 +611,9 @@ html, body {
   flex-shrink: 0;
   z-index: 50;
 }
+body.district-modal-open .activity-log {
+  display: none !important;
+}
 .log-header {
   display: flex;
   align-items: center;
@@ -649,7 +678,7 @@ html, body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--log-h);
+  bottom: 0;
   height: var(--modal-h);
   background: var(--bg-surface);
   border-top: 1px solid var(--border-bright);
@@ -658,7 +687,8 @@ html, body {
   display: flex;
   flex-direction: column;
   box-shadow: 0 -12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,211,238,0.06);
-  transform: translateY(calc(100% + 2px));
+  /* Translate completely off screen when closed */
+  transform: translateY(calc(100% + var(--log-h) + 20px));
   transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 .district-modal.open {
@@ -1657,8 +1687,7 @@ body {
 
   /* My location button — below zoom controls on mobile */
   .my-location-btn {
-    bottom: auto !important;
-    top: 100px !important;
+    top: 104px !important;
     right: 8px !important;
   }
 
