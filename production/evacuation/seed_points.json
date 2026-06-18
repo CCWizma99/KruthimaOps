@@ -1,0 +1,57 @@
+[
+  {
+    "type": "Safe Zone",
+    "label": "Kandy Central College",
+    "description": "Primary safe shelter for central Kandy area",
+    "status": "Open",
+    "capacity": 350,
+    "lat": 7.2906,
+    "lng": 80.6337,
+    "x": 180,
+    "y": 170
+  },
+  {
+    "type": "Safe Zone",
+    "label": "Colombo Public Shelter",
+    "description": "Urban flood safe zone near Colombo central area",
+    "status": "Ready",
+    "capacity": 500,
+    "lat": 6.9271,
+    "lng": 79.8612,
+    "x": 280,
+    "y": 190
+  },
+  {
+    "type": "Safe Zone",
+    "label": "Gampaha Community Hall",
+    "description": "Community evacuation support location",
+    "status": "Accessible",
+    "capacity": 220,
+    "lat": 7.0873,
+    "lng": 79.9990,
+    "x": 350,
+    "y": 220
+  },
+  {
+    "type": "Evacuation Point",
+    "label": "Kandy Bus Stand",
+    "description": "Pickup location for flood evacuation transport",
+    "status": "Active",
+    "capacity": 120,
+    "lat": 7.2936,
+    "lng": 80.6350,
+    "x": 220,
+    "y": 215
+  },
+  {
+    "type": "Evacuation Point",
+    "label": "Kelaniya Bridge Area",
+    "description": "Riverside evacuation pickup point",
+    "status": "Active",
+    "capacity": 150,
+    "lat": 6.9553,
+    "lng": 79.9220,
+    "x": 315,
+    "y": 245
+  }
+]
