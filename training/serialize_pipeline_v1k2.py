@@ -44,7 +44,6 @@ from sklearn.neighbors import KNeighborsRegressor
 import xgboost as xgb
 import catboost as cb
 import lightgbm as lgb
-import optuna
 from sklearn.model_selection import GroupShuffleSplit
 import warnings
 warnings.filterwarnings("ignore")
@@ -87,7 +86,12 @@ print("=" * 75)
 # ============================================================
 print("\n[LOAD] Loading data...")
 train_df = pd.read_csv("C:/KruthimaOps/data/train_v1002_desinventar.csv")
-train_df = train_df[train_df['is_synthetic'].isna()].reset_index(drop=True)
+
+# Final Round Exception: Drop all synthetic data to optimize for pure Ground Truth
+train_df = train_df[train_df["is_synthetic"] != 1].copy()
+# Drop the 1500 historical records (missing record_id) as per user directive
+train_df = train_df[train_df["record_id"].notna()].copy()
+print(f"Loaded {len(train_df)} Pure Modern Ground-Truth rows")
 
 # 1. Hot-Deck Impute Missing Coordinates using Place Name or District
 valid_coords = train_df.dropna(subset=['latitude', 'longitude'])
@@ -709,24 +713,8 @@ print("\n[STACK] Running L2 alpha grid search...")
 oof_meta = np.column_stack([oof_preds[m][real_mask] for m in MODEL_NAMES])
 tst_meta = np.column_stack([tst_preds[m] for m in MODEL_NAMES])
 
-def objective(trial):
-    alpha = trial.suggest_float("alpha", 1e-6, 1e1, log=True)
-    oof_cv = np.zeros(len(original_y))
-    for fold, (tr_l2, va_l2) in enumerate(gkf_l2.split(original_df, original_y, original_groups)):
-        w_cv, b_cv = fit_metric_stacker(oof_meta[tr_l2], original_y[tr_l2], alpha=alpha)
-        oof_cv[va_l2] = np.clip(np.dot(oof_meta[va_l2], w_cv) + b_cv, 0.0, 1.0)
-    cv_mae  = mean_absolute_error(original_y, oof_cv)
-    cv_rmse = root_mean_squared_error(original_y, oof_cv)
-    cv_ev   = explained_variance_score(original_y, oof_cv)
-    return (c_mae * cv_mae + c_rmse * cv_rmse) * (1.0 + c_ev * (1.0 - cv_ev))
-
-optuna.logging.set_verbosity(optuna.logging.WARNING)
-study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=SEED))
-study.optimize(objective, n_trials=50)
-
-best_alpha = study.best_params["alpha"]
-best_score = study.best_value
-print(f"   Best alpha: {best_alpha} | Nested CV Score: {best_score:.5f}")
+best_alpha = 10.0
+print(f"\n[STACKER] Best Ridge Alpha: {best_alpha:.4f} (Hardcoded)")
 
 oof_stacked = np.zeros(len(original_y))
 for fold, (tr_l2, va_l2) in enumerate(gkf_l2.split(original_df, original_y, original_groups)):
