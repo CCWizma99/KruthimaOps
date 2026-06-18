@@ -143,6 +143,32 @@ html, body {
   font-weight: 500;
   color: var(--text-secondary);
 }
+
+/* My Location button — below zoom controls on desktop */
+.my-location-btn {
+  position: absolute;
+  top: 104px;
+  right: 16px;
+  z-index: 10;
+  border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  background: rgba(10, 22, 40, 0.85);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.my-location-btn:hover {
+  background: rgba(34, 211, 238, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
 .status-dot {
   width: 6px; height: 6px;
   background: var(--accent-cyan);
@@ -585,6 +611,9 @@ html, body {
   flex-shrink: 0;
   z-index: 50;
 }
+body.district-modal-open .activity-log {
+  display: none !important;
+}
 .log-header {
   display: flex;
   align-items: center;
@@ -595,6 +624,11 @@ html, body {
   font-weight: 600;
   color: var(--text-secondary);
   flex-shrink: 0;
+}
+.log-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .export-btn {
   background: var(--bg-card);
@@ -644,7 +678,7 @@ html, body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--log-h);
+  bottom: 0;
   height: var(--modal-h);
   background: var(--bg-surface);
   border-top: 1px solid var(--border-bright);
@@ -653,7 +687,8 @@ html, body {
   display: flex;
   flex-direction: column;
   box-shadow: 0 -12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(34,211,238,0.06);
-  transform: translateY(calc(100% + 2px));
+  /* Translate completely off screen when closed */
+  transform: translateY(calc(100% + var(--log-h) + 20px));
   transition: transform 0.42s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 .district-modal.open {
@@ -1210,6 +1245,7 @@ html, body {
 .whatif-report-btn {
   margin-top: 10px;
   width: 100%;
+}
 /* ── MY LOCATION BUTTON ──────────────────────────────────────── */
 .my-location-btn {
   position: absolute;
@@ -1356,3 +1392,611 @@ body {
 }
 .icon-sm { width: 14px; height: 14px; display: inline-block; }
 .icon-lg { width: 22px; height: 22px; display: inline-block; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE COMPONENTS — Hidden on desktop, visible on mobile
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Hamburger menu button — hidden on desktop */
+.mobile-menu-btn {
+  display: none;
+  width: 40px;
+  height: 40px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--transition);
+}
+.mobile-menu-btn:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* Sidebar backdrop overlay — hidden by default */
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 13, 26, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 399;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.sidebar-backdrop.visible {
+  display: block;
+  opacity: 1;
+}
+
+/* Sidebar mobile header — hidden on desktop */
+.sidebar-mobile-header {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-mobile-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  letter-spacing: 0.3px;
+}
+.sidebar-close-btn {
+  width: 32px;
+  height: 32px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+.sidebar-close-btn:hover {
+  border-color: var(--risk-extreme);
+  color: var(--risk-extreme);
+}
+
+/* Mobile activity log toggle — hidden on desktop */
+.mobile-log-toggle {
+  display: none;
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  z-index: 250;
+  width: 42px;
+  height: 42px;
+  background: rgba(10, 22, 40, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.mobile-log-toggle:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+.mobile-log-toggle.active {
+  background: rgba(34, 211, 238, 0.12);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* Log close button — hidden on desktop */
+.log-close-btn {
+  display: none;
+  width: 28px;
+  height: 28px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+}
+.log-close-btn:hover {
+  border-color: var(--risk-extreme);
+  color: var(--risk-extreme);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESPONSIVE: MOBILE (≤ 768px)
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ── Root overrides ─────────────────────────────────── */
+  :root {
+    --header-h: 48px;
+    --panel-w: 280px;
+    --modal-h: 65vh;
+    --log-h: 0px;
+  }
+
+  /* ── Body ─────────────────────────────────────────────── */
+  html, body {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  /* ── Header — compact mode ─────────────────────────── */
+  .app-header {
+    padding: 0 10px;
+    gap: 8px;
+  }
+
+  .mobile-menu-btn {
+    display: flex;
+    width: 36px;
+    height: 36px;
+  }
+
+  .brand-icon { display: none; }
+  .brand-sub { display: none; }
+  .brand-name { font-size: 14px; }
+
+  .header-precompute {
+    display: none !important;
+  }
+
+  .header-status { gap: 6px; }
+  .status-chip {
+    padding: 3px 8px;
+    font-size: 9px;
+  }
+  .refresh-chip { display: none; }
+
+  /* ── Dashboard Grid — single column, full screen map ── */
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  /* ── Map fills entire viewport ──────────────────────── */
+  .map-section {
+    border-radius: 0 !important;
+    border: none !important;
+    min-height: calc(100vh - var(--header-h));
+    height: calc(100vh - var(--header-h));
+  }
+
+  /* ── Sidebar — Left drawer overlay ─────────────────── */
+  .control-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--panel-w);
+    z-index: 400;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border-right: 1px solid var(--border-bright) !important;
+    transform: translateX(-100%);
+    transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-top: 0;
+    background: rgba(10, 22, 40, 0.96) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  }
+  .control-panel.mobile-open {
+    transform: translateX(0);
+    box-shadow: 8px 0 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .sidebar-mobile-header {
+    display: flex;
+  }
+
+  /* Increase touch targets in sidebar */
+  .panel-section { padding: 0 14px; }
+
+  .styled-select {
+    padding: 10px 28px 10px 12px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+
+  .simulate-btn {
+    padding: 12px;
+    font-size: 13px;
+    min-height: 44px;
+    width: calc(100% - 28px);
+    margin: 0 14px;
+  }
+
+  .historical-btn {
+    padding: 12px;
+    font-size: 12px;
+    min-height: 44px;
+  }
+
+  .styled-date-input {
+    padding: 10px 12px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+
+  .toggle-btn {
+    padding: 10px;
+    font-size: 12px;
+    min-height: 44px;
+  }
+
+  .drop-zone {
+    padding: 16px 12px;
+    font-size: 12px;
+    min-height: 44px;
+  }
+
+  /* ── Map overlays repositioned ──────────────────────── */
+  .map-overlay-top {
+    top: 8px;
+    left: 8px;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .legend {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  .legend-gradient { width: 60px; }
+
+  .district-count-chip {
+    font-size: 10px;
+    padding: 4px 10px;
+  }
+
+  .map-zoom-controls {
+    top: 8px !important;
+    right: 8px !important;
+  }
+
+  .map-click-hint {
+    bottom: 70px;
+    right: 8px;
+    left: 8px;
+    text-align: center;
+    font-size: 11px;
+  }
+
+  /* My location button — below zoom controls on mobile */
+  .my-location-btn {
+    top: 104px !important;
+    right: 8px !important;
+  }
+
+  /* ── Activity Log — hidden by default on mobile ────── */
+  .activity-log {
+    display: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 50vh;
+    z-index: 350;
+    margin: 0 !important;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0 !important;
+    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.6);
+    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  .activity-log.mobile-visible {
+    display: flex;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  .mobile-log-toggle {
+    display: flex;
+  }
+
+  .log-close-btn {
+    display: flex;
+  }
+
+  .log-table td, .log-table th {
+    padding: 4px 8px;
+    font-size: 9px;
+  }
+  .log-table th { font-size: 8px; }
+
+  /* ── District Detail Modal — stacked single column ── */
+  .district-modal {
+    bottom: 0 !important;
+    height: var(--modal-h);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 75vh;
+  }
+
+  .district-modal-header {
+    padding: 0 12px 8px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .district-modal-name { font-size: 16px; }
+  .district-modal-sub  { font-size: 10px; }
+
+  .district-modal-actions {
+    gap: 6px;
+  }
+  .district-modal-actions button {
+    min-height: 36px;
+  }
+
+  /* The modal body is ONE scrollable container on mobile.
+     Child columns must NOT have their own overflow. */
+  .district-modal-body {
+    display: flex !important;
+    flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
+  }
+
+  /* ── Gauge: compact row with score inside arc ── */
+  .modal-gauge-col {
+    flex-direction: row;
+    align-items: center;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+    gap: 14px;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    overflow: visible;
+  }
+
+  .modal-gauge-wrap {
+    flex-shrink: 0;
+  }
+
+  .modal-gauge-svg { width: 110px; }
+
+  /* Kill individual scrolling — parent scrolls everything */
+  .modal-forecast-col {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    overflow: visible !important;
+    flex-shrink: 0;
+  }
+
+  .modal-forecast-list {
+    overflow: visible !important;
+  }
+
+  .modal-briefing-col {
+    padding: 10px 14px;
+    overflow: visible !important;
+    flex-shrink: 0;
+    padding-bottom: 32px;
+  }
+
+  .modal-briefing-text {
+    flex: none;
+  }
+
+  /* Simplify forecast rows on mobile */
+  .mfi-rain { display: none; }
+  .mfi-date { width: 52px; font-size: 11px; }
+  .mfi-day  { width: 38px; font-size: 10px; }
+  .mfi-badge { width: 52px; font-size: 9px; }
+  .modal-forecast-item {
+    padding: 8px 10px;
+    min-height: 40px;
+  }
+
+
+  .modal-briefing-text {
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  /* ── What-If Modal — full width ─────────────────────── */
+  .whatif-modal {
+    width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 48px);
+    top: 50%;
+    border-radius: var(--radius-lg);
+  }
+
+  .whatif-modal-header {
+    padding: 12px 14px;
+  }
+  .whatif-title { font-size: 13px; }
+  .whatif-district-chip { font-size: 9px; }
+
+  .whatif-modal-body {
+    padding: 12px 14px;
+    gap: 14px;
+  }
+
+  /* Larger slider touch targets */
+  .styled-slider {
+    height: 6px;
+  }
+  .styled-slider::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+  }
+
+  .predict-btn {
+    padding: 14px;
+    font-size: 14px;
+    min-height: 48px;
+  }
+
+  .whatif-result-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px;
+  }
+  .whatif-mini-gauge {
+    width: 100%;
+    max-width: 160px;
+    margin: 0 auto;
+  }
+  .whatif-result-meta {
+    align-items: center;
+    text-align: center;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESPONSIVE: TABLET (769px – 1024px)
+   ═══════════════════════════════════════════════════════════════════ */
+@media (min-width: 769px) and (max-width: 1024px) {
+
+  :root {
+    --panel-w: 210px;
+    --modal-h: 280px;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: calc(var(--panel-w) + 16px) 1fr !important;
+    padding: 8px 8px 8px 0 !important;
+    gap: 8px !important;
+  }
+
+  .control-panel {
+    margin: 0 0 0 8px !important;
+  }
+
+  .activity-log {
+    margin: 0 8px 8px 8px !important;
+  }
+
+  /* District modal — 2 columns: gauge+forecast | briefing */
+  .district-modal-body {
+    grid-template-columns: 1fr 200px;
+  }
+
+  .modal-gauge-col {
+    flex-direction: row;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    grid-column: 1 / -1;
+    padding: 6px 12px;
+    gap: 16px;
+    justify-content: center;
+  }
+
+  .modal-gauge-svg { width: 110px; }
+
+  .modal-forecast-col {
+    border-right: 1px solid var(--border);
+  }
+
+  /* Header adjustments */
+  .brand-sub { font-size: 9px; }
+  .status-chip { font-size: 10px; padding: 3px 10px; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   DESKTOP ENHANCEMENTS (≥ 1025px)
+   ═══════════════════════════════════════════════════════════════════ */
+@media (min-width: 1025px) {
+
+  /* Slightly wider panel for more breathing room */
+  :root {
+    --panel-w: 200px;
+  }
+
+  /* Smooth transitions on interactive rows */
+  .modal-forecast-item {
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+  .modal-forecast-item:hover {
+    transform: translateX(2px);
+    background: rgba(34, 211, 238, 0.04);
+  }
+
+  /* Glow ring on map controls */
+  .map-zoom-btn:hover, .my-location-btn:hover {
+    box-shadow: 0 0 18px rgba(34, 211, 238, 0.2);
+  }
+
+  /* Subtle column separators in district modal */
+  .modal-forecast-col {
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .modal-gauge-col {
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  /* Activity log collapsible header enhancement */
+  .log-header {
+    cursor: pointer;
+    transition: background var(--transition);
+  }
+  .log-header:hover {
+    background: var(--bg-hover);
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   LANDSCAPE MOBILE FIX
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) and (orientation: landscape) {
+  .map-section {
+    min-height: calc(100vh - var(--header-h));
+  }
+
+  .district-modal {
+    height: 55vh;
+    max-height: 55vh;
+  }
+
+  .district-modal-body {
+    grid-template-columns: 140px 1fr !important;
+    grid-template-rows: 1fr auto;
+  }
+
+  .modal-gauge-col {
+    flex-direction: column;
+    border-bottom: none;
+    border-right: 1px solid var(--border);
+    grid-row: 1 / -1;
+  }
+
+  .modal-forecast-col {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-briefing-col {
+    grid-column: 2;
+  }
+}

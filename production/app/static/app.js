@@ -506,7 +506,14 @@ function startPrecomputePolling() {
 
 // ════════════════════════════════════════════ DISTRICT SELECT ══
 function selectDistrict(name) {
+
   if (state.nationalViewActive) loadSubdivisions(name);
+
+  // Ensure activity log is closed when district modal opens (mobile)
+  const log = document.getElementById('activity-log');
+  if (log && log.classList.contains('mobile-visible')) {
+    toggleMobileLog();
+  }
 
   state.selectedDistrict = name;
 
@@ -534,6 +541,7 @@ function selectDistrict(name) {
 function openDistrictModal(name) {
   const modal = document.getElementById('district-modal');
   modal.classList.add('open');
+  document.body.classList.add('district-modal-open');
 
   // Set header info
   document.getElementById('modal-district-name').textContent = name;
@@ -581,6 +589,10 @@ function updateNearestSafeZone(districtName) {
 
 function closeDistrictModal() {
   document.getElementById('district-modal').classList.remove('open');
+  document.body.classList.remove('district-modal-open');
+  if (!state.nationalViewActive) {
+    restoreNationalView();
+  }
 }
 
 async function loadDistrictForecast(name) {
@@ -1651,3 +1663,124 @@ document.addEventListener('keydown', (e) => {
     zoomMapTowards(false, true);
   }
 });
+
+// ═══════════════════════════════════════════════════════ MOBILE UI ══
+
+/**
+ * Toggle the mobile sidebar drawer (left slide-in)
+ */
+function toggleMobileSidebar() {
+  const panel = document.getElementById('control-panel');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const isOpen = panel.classList.contains('mobile-open');
+  
+  if (isOpen) {
+    closeMobileSidebar();
+  } else {
+    panel.classList.add('mobile-open');
+    backdrop.classList.add('visible');
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeMobileSidebar() {
+  const panel = document.getElementById('control-panel');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  panel.classList.remove('mobile-open');
+  backdrop.classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+/**
+ * Toggle the mobile activity log overlay
+ */
+function toggleMobileLog() {
+  const log = document.getElementById('activity-log');
+  const btn = document.getElementById('mobile-log-toggle');
+  const isVisible = log.classList.contains('mobile-visible');
+  
+  if (isVisible) {
+    log.classList.remove('mobile-visible');
+    btn.classList.remove('active');
+  } else {
+    // Close district modal if it's open to prevent overlap
+    const modal = document.getElementById('district-modal');
+    if (modal && modal.classList.contains('open')) {
+      closeDistrictModal();
+    }
+    
+    log.classList.add('mobile-visible');
+    btn.classList.add('active');
+  }
+}
+
+/**
+ * Auto-close mobile drawer when resizing to desktop width
+ */
+const mobileMediaQuery = window.matchMedia('(max-width: 768px)');
+
+function handleMobileChange(e) {
+  if (!e.matches) {
+    // Switched to desktop — close mobile drawers
+    closeMobileSidebar();
+    const log = document.getElementById('activity-log');
+    const btn = document.getElementById('mobile-log-toggle');
+    if (log) log.classList.remove('mobile-visible');
+    if (btn) btn.classList.remove('active');
+    document.body.style.overflow = '';
+  }
+}
+
+// Modern API (addEventListener) with fallback (addListener for older Safari)
+if (mobileMediaQuery.addEventListener) {
+  mobileMediaQuery.addEventListener('change', handleMobileChange);
+} else if (mobileMediaQuery.addListener) {
+  mobileMediaQuery.addListener(handleMobileChange);
+}
+
+/**
+ * Touch swipe gesture: swipe left on sidebar to close
+ */
+(function initSidebarSwipe() {
+  const panel = document.getElementById('control-panel');
+  if (!panel) return;
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let isSwiping = false;
+
+  panel.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    isSwiping = false;
+  }, { passive: true });
+
+  panel.addEventListener('touchmove', (e) => {
+    const dx = e.touches[0].clientX - touchStartX;
+    const dy = e.touches[0].clientY - touchStartY;
+    // Only track horizontal swipes (more horizontal than vertical)
+    if (Math.abs(dx) > Math.abs(dy) && dx < -20) {
+      isSwiping = true;
+    }
+  }, { passive: true });
+
+  panel.addEventListener('touchend', () => {
+    if (isSwiping) {
+      closeMobileSidebar();
+    }
+    isSwiping = false;
+  }, { passive: true });
+})();
+
+/**
+ * Auto-close sidebar when a district is selected on mobile
+ */
+const _originalSelectDistrict = selectDistrict;
+selectDistrict = function(name) {
+  _originalSelectDistrict(name);
+  // Close mobile sidebar after selecting a district
+  if (mobileMediaQuery.matches) {
+    closeMobileSidebar();
+  }
+};
+
