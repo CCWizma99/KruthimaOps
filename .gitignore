@@ -15,3 +15,13 @@ Thumbs.db
 # Environment variables
 .env
 monitoring.db
+
+# Local virtual environments
+venv/
+.venv/
+production/venv/
+production/.venv/
+
+# Local test/cache artifacts
+.pytest_cache/
+*.log

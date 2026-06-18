@@ -1,0 +1,23 @@
+.git
+.github
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.env
+*.log
+
+# Local virtual environments should never be sent to Railway Docker builds
+venv/
+.venv/
+production/venv/
+production/.venv/
+
+# Heavy research/training artifacts not required by production API image
+Oshadha/
+training/
+scratch/
+submissions/
+*.zip

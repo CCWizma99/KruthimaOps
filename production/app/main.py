@@ -8,6 +8,7 @@ All business logic lives in the respective modules.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import traceback
 import uuid
@@ -17,6 +18,7 @@ from typing import Any
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -93,8 +95,11 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("[Startup] Loading ML artifacts...")
     load_artifacts()
-    logger.info("[Startup] Launching background precompute thread...")
-    threading.Thread(target=_bg_precompute_all_forecasts, daemon=True).start()
+    if os.getenv("DISABLE_PRECOMPUTE", "0") == "1":
+        logger.info("[Startup] Background forecast precompute disabled by DISABLE_PRECOMPUTE=1.")
+    else:
+        logger.info("[Startup] Launching background precompute thread...")
+        threading.Thread(target=_bg_precompute_all_forecasts, daemon=True).start()
     logger.info("[Startup] FloodGuard SL is ready.")
     yield
     # Shutdown (nothing to do)
@@ -109,8 +114,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS is required when the frontend is hosted separately on Vercel
+# and calls the backend hosted on Railway. Set CORS_ALLOWED_ORIGINS to
+# the Vercel URL after deployment, for example:
+# CORS_ALLOWED_ORIGINS=https://floodguard-sl.vercel.app,http://localhost:3000
+allowed_origins_raw = os.getenv("CORS_ALLOWED_ORIGINS", "")
+allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+if allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 # Static files (frontend dashboard)
-import os
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
