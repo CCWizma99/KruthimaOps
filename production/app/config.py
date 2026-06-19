@@ -16,8 +16,9 @@ MODEL_VERSION   = "prod_v1k.2"
 MODELS_BASE_DIR = os.path.join(BASE_DIR, "models")
 
 # ── Monitoring ───────────────────────────────────────────────────────
-MONITOR_BACKEND = "sqlite"          # options: "sqlite" (extend with "postgres")
-SQLITE_DB_PATH  = os.path.join(BASE_DIR, "monitoring.db")
+MONITOR_BACKEND = os.getenv("MONITOR_BACKEND", "postgres")          # options: "sqlite" or "postgres"
+SQLITE_DB_PATH  = os.getenv("SQLITE_DB_PATH", os.path.join(BASE_DIR, "monitoring.db"))
+DATABASE_URL    = os.getenv("DATABASE_URL", "")
 
 # ── AI Briefing ──────────────────────────────────────────────────────
 BRIEFING_PROVIDER = "gemini"        # options: "gemini", "disabled"

@@ -102,11 +102,22 @@ async def lifespan(app: FastAPI):
 
 # ── App ───────────────────────────────────────────────────────────────
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title=config.API_TITLE,
     description=config.API_DESCRIPTION,
     version=config.API_VERSION,
     lifespan=lifespan,
+)
+
+# Enable CORS for local development and Vercel hosting
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Static files (frontend dashboard)
@@ -146,7 +157,7 @@ async def dashboard():
     if os.path.exists(index):
         with open(index, encoding="utf-8") as f:
             return f.read()
-    return HTMLResponse("<h1>Flood Timeline API is running.</h1><p>Frontend not built yet.</p>")
+    return HTMLResponse("<h1>Flood Timeline Backend API is running.</h1><p>Frontend is hosted separately (e.g. on Vercel).</p>")
 
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker():

@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse, Response, HTMLResponse
-import os
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 import io
@@ -9,11 +7,11 @@ import zipfile
 import json
 import math
 from typing import Optional
+from app.database import get_db_cursor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Note: we use the existing data directory as requested in the plan
 DATA_DIR = os.path.abspath(os.path.join(HERE, '..', '..', 'data'))
-DB_PATH = os.path.join(DATA_DIR, 'evac_points.db')
 
 # Original frontend files
 HTML_FILE = os.path.join(HERE, '..', 'evacuation', 'evacuation_presentation.html')
@@ -25,44 +23,44 @@ router = APIRouter(tags=["Evacuation"])
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ─── DATABASE ────────────────────────────────────────────────────
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute('PRAGMA journal_mode=WAL')
-    return conn
-
 def init_db():
-    conn = get_db()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS points (
-            id TEXT PRIMARY KEY,
-            type TEXT,
-            label TEXT,
-            x REAL,
-            y REAL,
-            lat REAL,
-            lng REAL,
-            description TEXT,
-            status TEXT,
-            capacity INTEGER,
-            created_at TEXT,
-            updated_at TEXT
-        )
-    ''')
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS hazards (
-            id TEXT PRIMARY KEY,
-            lat REAL,
-            lng REAL,
-            radius_m REAL,
-            note TEXT,
-            created_at TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    import logging
+    logger = logging.getLogger("app.api_evacuation")
+    logger.info("[Database] Initializing PostgreSQL evacuation schema...")
+    with get_db_cursor() as cur:
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS points (
+                id VARCHAR PRIMARY KEY,
+                type VARCHAR,
+                label VARCHAR,
+                x DOUBLE PRECISION,
+                y DOUBLE PRECISION,
+                lat DOUBLE PRECISION,
+                lng DOUBLE PRECISION,
+                description TEXT,
+                status VARCHAR,
+                capacity INTEGER,
+                created_at VARCHAR,
+                updated_at VARCHAR
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS hazards (
+                id VARCHAR PRIMARY KEY,
+                lat DOUBLE PRECISION,
+                lng DOUBLE PRECISION,
+                radius_m DOUBLE PRECISION,
+                note TEXT,
+                created_at VARCHAR
+            )
+        ''')
+    logger.info("[Database] Evacuation schema initialized.")
 
-init_db()
+try:
+    init_db()
+except Exception as e:
+    import logging
+    logging.getLogger("app.api_evacuation").warning(f"Could not auto-initialize evacuation tables: {e}")
 
 # ─── AUTH ───────────────────────────────────────────────────────
 def require_admin(x_admin_key: Optional[str] = Header(None)):
@@ -81,9 +79,9 @@ def row_to_point(r):
     }
 
 def read_points():
-    conn = get_db()
-    rows = conn.execute('SELECT * FROM points ORDER BY created_at').fetchall()
-    conn.close()
+    with get_db_cursor() as cur:
+        cur.execute('SELECT id, type, label, x, y, lat, lng, description, status, capacity, created_at, updated_at FROM points ORDER BY created_at')
+        rows = cur.fetchall()
     return [row_to_point(r) for r in rows]
 
 def compute_xy_from_latlng(lat, lng):
@@ -94,7 +92,6 @@ def compute_xy_from_latlng(lat, lng):
     return x, y
 
 def append_point(data: dict):
-    conn = get_db()
     now = datetime.now(timezone.utc).isoformat()
     lat = data.get('lat')
     lng = data.get('lng')
@@ -123,69 +120,63 @@ def append_point(data: dict):
         'created_at': now,
         'updated_at': now
     }
-    conn.execute('''
-        INSERT INTO points (id, type, label, x, y, lat, lng, description, status, capacity, created_at, updated_at)
-        VALUES (:id, :type, :label, :x, :y, :lat, :lng, :description, :status, :capacity, :created_at, :updated_at)
-    ''', row)
-    conn.commit()
-    conn.close()
+    with get_db_cursor() as cur:
+        cur.execute('''
+            INSERT INTO points (id, type, label, x, y, lat, lng, description, status, capacity, created_at, updated_at)
+            VALUES (%(id)s, %(type)s, %(label)s, %(x)s, %(y)s, %(lat)s, %(lng)s, %(description)s, %(status)s, %(capacity)s, %(created_at)s, %(updated_at)s)
+        ''', row)
     return row
 
 def update_point(point_id, data):
-    conn = get_db()
-    existing = conn.execute('SELECT * FROM points WHERE id = ?', (point_id,)).fetchone()
-    if existing is None:
-        conn.close()
-        return None
+    with get_db_cursor() as cur:
+        cur.execute('SELECT id, type, label, x, y, lat, lng, description, status, capacity, created_at, updated_at FROM points WHERE id = %s', (point_id,))
+        existing = cur.fetchone()
+        if existing is None:
+            return None
 
-    target = row_to_point(existing)
-    if 'type' in data and data['type']: target['type'] = data['type']
-    if 'label' in data and data['label']: target['label'] = data['label']
-    if 'description' in data: target['description'] = data['description']
-    if 'status' in data: target['status'] = data['status']
-    if 'capacity' in data: target['capacity'] = data['capacity']
+        target = row_to_point(existing)
+        if 'type' in data and data['type']: target['type'] = data['type']
+        if 'label' in data and data['label']: target['label'] = data['label']
+        if 'description' in data: target['description'] = data['description']
+        if 'status' in data: target['status'] = data['status']
+        if 'capacity' in data: target['capacity'] = data['capacity']
 
-    lat = data.get('lat')
-    lng = data.get('lng')
-    if lat is not None or lng is not None:
-        if lat is not None:
-            try: lat = float(lat)
-            except: 
-                conn.close()
-                return {'error': 'Invalid latitude'}
-        if lng is not None:
-            try: lng = float(lng)
-            except: 
-                conn.close()
-                return {'error': 'Invalid longitude'}
-        target['lat'] = lat
-        target['lng'] = lng
-        if lat is not None and lng is not None:
-            target['x'], target['y'] = compute_xy_from_latlng(lat, lng)
-    else:
-        if 'x' in data and data['x'] is not None:
-            try: target['x'] = float(data['x'])
-            except: pass
-        if 'y' in data and data['y'] is not None:
-            try: target['y'] = float(data['y'])
-            except: pass
+        lat = data.get('lat')
+        lng = data.get('lng')
+        if lat is not None or lng is not None:
+            if lat is not None:
+                try: lat = float(lat)
+                except: 
+                    return {'error': 'Invalid latitude'}
+            if lng is not None:
+                try: lng = float(lng)
+                except: 
+                    return {'error': 'Invalid longitude'}
+            target['lat'] = lat
+            target['lng'] = lng
+            if lat is not None and lng is not None:
+                target['x'], target['y'] = compute_xy_from_latlng(lat, lng)
+        else:
+            if 'x' in data and data['x'] is not None:
+                try: target['x'] = float(data['x'])
+                except: pass
+            if 'y' in data and data['y'] is not None:
+                try: target['y'] = float(data['y'])
+                except: pass
 
-    target['updated_at'] = datetime.now(timezone.utc).isoformat()
-    conn.execute('''
-        UPDATE points SET type=:type, label=:label, x=:x, y=:y, lat=:lat, lng=:lng,
-            description=:description, status=:status, capacity=:capacity, updated_at=:updated_at
-        WHERE id=:id
-    ''', target)
-    conn.commit()
-    conn.close()
+        target['updated_at'] = datetime.now(timezone.utc).isoformat()
+        cur.execute('''
+            UPDATE points SET type=%(type)s, label=%(label)s, x=%(x)s, y=%(y)s, lat=%(lat)s, lng=%(lng)s,
+                description=%(description)s, status=%(status)s, capacity=%(capacity)s, updated_at=%(updated_at)s
+            WHERE id=%(id)s
+        ''', target)
     return target
 
 def delete_point(point_id):
-    conn = get_db()
-    cur = conn.execute('DELETE FROM points WHERE id = ?', (point_id,))
-    conn.commit()
-    conn.close()
-    return cur.rowcount > 0
+    with get_db_cursor() as cur:
+        cur.execute('DELETE FROM points WHERE id = %s', (point_id,))
+        rowcount = cur.rowcount
+    return rowcount > 0
 
 def build_svg(points):
     lats = [p['lat'] for p in points if p['lat'] is not None]
@@ -367,9 +358,9 @@ def api_rank_safe_zones(origin_lat: Optional[str] = None, origin_lng: Optional[s
 
 @router.get('/api/hazards')
 def api_hazards_get():
-    conn = get_db()
-    rows = conn.execute('SELECT * FROM hazards ORDER BY created_at DESC').fetchall()
-    conn.close()
+    with get_db_cursor() as cur:
+        cur.execute('SELECT id, lat, lng, radius_m, note, created_at FROM hazards ORDER BY created_at DESC')
+        rows = cur.fetchall()
     return [dict(r) for r in rows]
 
 @router.post('/api/hazards', status_code=201)
@@ -377,7 +368,6 @@ async def api_hazards_post(request: Request, admin: bool = Depends(require_admin
     try: data = await request.json()
     except: raise HTTPException(status_code=400, detail="invalid json")
     
-    conn = get_db()
     row = {
         'id': uuid.uuid4().hex,
         'lat': data.get('lat'), 'lng': data.get('lng'),
@@ -385,9 +375,8 @@ async def api_hazards_post(request: Request, admin: bool = Depends(require_admin
         'note': data.get('note', ''),
         'created_at': datetime.now(timezone.utc).isoformat()
     }
-    conn.execute('INSERT INTO hazards (id, lat, lng, radius_m, note, created_at) VALUES (:id,:lat,:lng,:radius_m,:note,:created_at)', row)
-    conn.commit()
-    conn.close()
+    with get_db_cursor() as cur:
+        cur.execute('INSERT INTO hazards (id, lat, lng, radius_m, note, created_at) VALUES (%(id)s,%(lat)s,%(lng)s,%(radius_m)s,%(note)s,%(created_at)s)', row)
     return row
 
 @router.get('/api/export/svg')

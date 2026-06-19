@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://your-backend-railway-url.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/static/subdivisions/:path*",
+      "destination": "https://your-backend-railway-url.up.railway.app/static/subdivisions/:path*"
+    },
+    {
+      "source": "/evacuation",
+      "destination": "/evacuation.html"
+    },
+    {
+      "source": "/diagnostics",
+      "destination": "/diagnostics.html"
+    }
+  ]
+}

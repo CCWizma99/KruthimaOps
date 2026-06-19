@@ -19,6 +19,19 @@ if MONITOR_BACKEND == "sqlite":
         save_cached_forecast,
         get_all_today_forecasts,
     )
+elif MONITOR_BACKEND == "postgres":
+    from app.monitoring.postgres_adapter import (
+        log_prediction,
+        log_error,
+        log_feedback,
+        get_metrics,
+        get_recent_predictions,
+        get_prediction_by_id,
+        init_db,
+        get_cached_forecast,
+        save_cached_forecast,
+        get_all_today_forecasts,
+    )
 else:
     raise ValueError(f"Unknown MONITOR_BACKEND: {MONITOR_BACKEND}")
 

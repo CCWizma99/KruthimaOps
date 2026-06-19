@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flood Timeline — System Diagnostics</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    body { padding: 40px; overflow-y: auto; }
+    .diag-container { max-width: 800px; margin: 0 auto; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 30px; }
+    .diag-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    .diag-title { font-size: 24px; font-weight: 700; color: var(--accent-cyan); display: flex; align-items: center; gap: 10px; }
+    .btn-run { background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue)); color: #fff; border: none; padding: 10px 20px; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .btn-run:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(34,211,238,0.3); }
+    .btn-run:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    
+    .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+    .status-Healthy { background: rgba(34,197,94,0.15); color: var(--risk-low); border: 1px solid var(--risk-low); }
+    .status-Warning { background: rgba(234,179,8,0.15); color: var(--risk-medium); border: 1px solid var(--risk-medium); }
+    .status-Error { background: rgba(239,68,68,0.15); color: var(--risk-extreme); border: 1px solid var(--risk-extreme); }
+    .status-Skipped { background: rgba(148,163,184,0.15); color: var(--text-secondary); border: 1px solid var(--text-secondary); }
+
+    .check-list { display: flex; flex-direction: column; gap: 15px; }
+    .check-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 15px; display: flex; flex-direction: column; gap: 8px; }
+    .check-header { display: flex; justify-content: space-between; align-items: center; }
+    .check-name { font-weight: 600; font-size: 14px; }
+    .check-msg { font-size: 13px; color: var(--text-secondary); font-family: var(--font-mono); }
+
+    .json-panel { margin-top: 30px; background: #000; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 15px; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); overflow-x: auto; }
+  </style>
+</head>
+<body>
+
+<div class="diag-container">
+  <div class="diag-header">
+    <div class="diag-title">
+      <span>🩺</span> System Diagnostics
+    </div>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <span id="overall-status" class="status-badge status-Skipped">Ready</span>
+      <button class="btn-run" id="run-btn" onclick="runDiagnostics()">Run Checks</button>
+      <a href="/" style="color: var(--accent-cyan); font-size: 13px; text-decoration: none;">← Back to Dashboard</a>
+    </div>
+  </div>
+
+  <div class="check-list" id="check-list">
+    <!-- Check cards will be injected here -->
+    <div style="text-align: center; color: var(--text-muted); padding: 40px;">
+      Click "Run Checks" to verify system integrity and connectivity.
+    </div>
+  </div>
+
+  <pre class="json-panel" id="json-panel">{}</pre>
+</div>
+
+<script>
+  async function runDiagnostics() {
+    const btn = document.getElementById('run-btn');
+    const list = document.getElementById('check-list');
+    const overall = document.getElementById('overall-status');
+    const jsonPanel = document.getElementById('json-panel');
+
+    btn.disabled = true;
+    btn.textContent = "Running...";
+    overall.className = "status-badge status-Skipped";
+    overall.textContent = "Testing...";
+    list.innerHTML = `<div style="text-align:center; padding: 30px;"><div class="btn-loader" style="margin: 0 auto;"></div></div>`;
+
+    try {
+      const resp = await fetch('/api/diagnostics');
+      const data = await resp.json();
+
+      overall.className = `status-badge status-${data.overall_status}`;
+      overall.textContent = data.overall_status;
+      jsonPanel.textContent = JSON.stringify(data, null, 2);
+
+      list.innerHTML = data.checks.map(c => `
+        <div class="check-card fade-in">
+          <div class="check-header">
+            <span class="check-name">${c.name}</span>
+            <span class="status-badge status-${c.status}">${c.status}</span>
+          </div>
+          <div class="check-msg">${c.message}</div>
+        </div>
+      `).join('');
+
+    } catch (e) {
+      overall.className = `status-badge status-Error`;
+      overall.textContent = "Fatal Error";
+      list.innerHTML = `<div class="check-card"><div class="check-msg" style="color:var(--risk-extreme)">Failed to connect to backend: ${e.message}</div></div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Run Checks Again";
+    }
+  }
+</script>
+
+</body>
+</html>

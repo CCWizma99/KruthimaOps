@@ -26,5 +26,28 @@ jobs:
     - name: Run tests
       env:
         PYTHONPATH: production
+        MONITOR_BACKEND: sqlite
+        SQLITE_DB_PATH: test_monitoring.db
       run: |
         pytest production/tests/
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Deploy Frontend to Vercel
+      uses: amondnet/vercel-action@v20
+      with:
+        vercel-token: ${{ secrets.VERCEL_TOKEN }}
+        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+        vercel-args: '--prod'
+        working-directory: ./frontend
+
+    - name: Deploy Backend to Railway
+      uses: railwayapp/action-deploy@v1
+      with:
+        railway_token: ${{ secrets.RAILWAY_TOKEN }}
