@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, HTTPException, Header, Depends
 from fastapi.responses import JSONResponse, Response, HTMLResponse
+import os
 import uuid
 from datetime import datetime, timezone
 import io
