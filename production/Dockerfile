@@ -12,7 +12,7 @@ COPY production/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY production/ .
 
 ENV PYTHONPATH=/app
 ENV PORT=8000
