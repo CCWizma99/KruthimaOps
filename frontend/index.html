@@ -40,6 +40,10 @@
   </div>
 
   <div class="header-status">
+    <a href="/lab" class="status-chip lab-chip" style="text-decoration: none; color: var(--accent-cyan); border-color: rgba(45, 212, 191, 0.3); display: flex; align-items: center; gap: 6px;">
+      <i data-lucide="flask-conical" class="icon-sm"></i>
+      <span>Experiment Lab</span>
+    </a>
     <div class="status-chip" id="model-chip">
       <span class="status-dot"></span>
       <span id="model-version-label">Loading model...</span>
@@ -101,37 +105,6 @@
       <i data-lucide="map" class="icon-sm" style="margin-right:8px"></i> Open Evacuation Module
     </a>
 
-    <button class="simulate-btn" id="simulate-btn" onclick="openWhatIfModal()" disabled>
-      <i data-lucide="zap" class="icon-sm" style="margin-right:8px"></i> Simulate Scenario
-    </button>
-
-    <div class="divider"></div>
-
-    <!-- Historical Simulation / Time Travel -->
-    <div class="panel-section">
-      <label class="field-label"><i data-lucide="clock" class="icon-sm"></i> Time Travel</label>
-      <p class="field-hint">Pick a past date to backtest predictions using actual historical weather data.</p>
-      <input type="date" id="historical-date" class="styled-date-input" />
-      <button class="historical-btn" id="historical-btn" onclick="runHistoricalSimulation()">
-        <span id="hist-btn-text"><i data-lucide="rewind" class="icon-sm" style="margin-right:6px"></i> Run Historical</span>
-        <div class="btn-loader" id="hist-btn-loader" style="display:none"></div>
-      </button>
-    </div>
-
-    <!-- Historical mode active banner -->
-    <div class="historical-active-banner" id="historical-active-banner" style="display:none">
-      <div class="hist-banner-info">
-        <span class="hist-banner-icon"><i data-lucide="history" class="icon-lg"></i></span>
-        <div class="hist-banner-text">
-          <span class="hist-banner-title" id="hist-banner-title">Historical Mode</span>
-          <span class="hist-banner-date" id="hist-banner-date">—</span>
-        </div>
-      </div>
-      <button class="hist-return-btn" onclick="returnToLive()"><i data-lucide="corner-up-left" class="icon-sm" style="margin-right:4px"></i> Return to Live</button>
-    </div>
-
-    <div class="divider"></div>
-
     <!-- Compact model registry -->
     <div class="model-mini-card">
       <div class="model-mini-header"><i data-lucide="bar-chart-2" class="icon-sm"></i> Model Registry</div>
@@ -158,17 +131,6 @@
       <div class="model-stat-row">
         <span class="stat-label">Trained</span>
         <span class="stat-value" id="stat-date">—</span>
-      </div>
-    </div>
-
-    <div class="divider"></div>
-
-    <!-- Batch Upload -->
-    <div class="panel-section">
-      <label class="field-label"><i data-lucide="upload-cloud" class="icon-sm"></i> Batch Upload</label>
-      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('csv-input').click()">
-        <span>Drop CSV or click to upload</span>
-        <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="handleBatchUpload(event)" />
       </div>
     </div>
 
@@ -275,7 +237,7 @@
       <span class="district-modal-sub" id="modal-district-sub">Click on the map or select from the dropdown</span>
     </div>
     <div class="district-modal-actions">
-      <button class="modal-simulate-btn" id="modal-simulate-btn" onclick="openWhatIfModal()"><i data-lucide="zap" class="icon-sm"></i> Simulate</button>
+      <button class="modal-simulate-btn" id="modal-simulate-btn" onclick="openDistrictInLab()"><i data-lucide="flask-conical" class="icon-sm"></i> Analyze in Lab</button>
       <button class="modal-report-btn" id="modal-report-btn" onclick="downloadReport()" disabled><i data-lucide="file-text" class="icon-sm"></i> Report</button>
       <button class="modal-close-btn" onclick="closeDistrictModal()">✕</button>
     </div>
@@ -329,102 +291,7 @@
   </div>
 </div>
 
-<!-- ══════════════════════ WHAT-IF SIMULATION MODAL ══ -->
-<div class="whatif-overlay" id="whatif-overlay" onclick="closeWhatIfModal()"></div>
-<div class="whatif-modal" id="whatif-modal">
 
-  <div class="whatif-modal-header">
-    <div class="whatif-title-group">
-      <span class="whatif-title"><i data-lucide="zap" class="icon-sm"></i> Scenario Simulator</span>
-      <span class="whatif-district-chip" id="whatif-district-chip">No district selected</span>
-    </div>
-    <button class="modal-close-btn" onclick="closeWhatIfModal()">✕</button>
-  </div>
-
-  <div class="whatif-modal-body">
-
-    <div class="slider-group">
-      <div class="slider-header">
-        <span>Rainfall (7-day)</span>
-        <span class="slider-value" id="rainfall-value">50 mm</span>
-      </div>
-      <input type="range" id="rainfall-slider" class="styled-slider" min="0" max="500" value="50" step="5" />
-      <div class="slider-ticks">
-        <span>0</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500mm</span>
-      </div>
-    </div>
-
-    <div class="slider-group">
-      <div class="slider-header">
-        <span>Inundation Area</span>
-        <span class="slider-value" id="inundation-value">0 sqm</span>
-      </div>
-      <input type="range" id="inundation-slider" class="styled-slider" min="0" max="50000" value="0" step="500" />
-      <div class="slider-ticks">
-        <span>0</span><span>10k</span><span>25k</span><span>50k sqm</span>
-      </div>
-    </div>
-
-    <div class="toggle-group">
-      <label class="field-label">Active Flooding</label>
-      <div class="toggle-row">
-        <button class="toggle-btn active" id="flood-no" data-field="flood_occurrence" data-value="No">No</button>
-        <button class="toggle-btn" id="flood-yes" data-field="flood_occurrence" data-value="Yes">Yes</button>
-      </div>
-    </div>
-
-    <div class="toggle-group">
-      <label class="field-label">Safe to Live</label>
-      <div class="toggle-row">
-        <button class="toggle-btn active" id="live-yes" data-field="is_good_to_live" data-value="Yes">Yes</button>
-        <button class="toggle-btn" id="live-no" data-field="is_good_to_live" data-value="No">No</button>
-      </div>
-    </div>
-
-    <div class="panel-section">
-      <label class="field-label">Reason (if unsafe)</label>
-      <select id="reason-select" class="styled-select">
-        <option value="None">None</option>
-        <option value="Flood Risk">Flood Risk</option>
-        <option value="Water Contamination">Water Contamination</option>
-        <option value="Infrastructure Damage">Infrastructure Damage</option>
-        <option value="Landslide Risk">Landslide Risk</option>
-      </select>
-    </div>
-
-  </div>
-
-  <div class="whatif-modal-footer">
-    <button class="predict-btn" id="predict-btn" onclick="runPrediction()">
-      <span id="btn-text"><i data-lucide="activity" class="icon-sm"></i> Analyse Risk</span>
-      <div class="btn-loader" id="btn-loader" style="display:none"></div>
-    </button>
-
-    <!-- Result panel — shown after analysis -->
-    <div class="whatif-result" id="whatif-result" style="display:none">
-      <div class="whatif-result-row">
-        <div class="whatif-mini-gauge">
-          <svg viewBox="0 0 200 120" style="width:100%;height:auto;">
-            <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1e2a3a" stroke-width="18" stroke-linecap="round"/>
-            <path id="whatif-gauge-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#22d3ee" stroke-width="18" stroke-linecap="round" stroke-dasharray="251" stroke-dashoffset="251"/>
-            <circle id="whatif-gauge-needle" cx="20" cy="100" r="5" fill="white"/>
-          </svg>
-          <div class="whatif-gauge-center">
-            <span class="whatif-gauge-score" id="whatif-gauge-score">—</span>
-          </div>
-        </div>
-        <div class="whatif-result-meta">
-          <div class="risk-badge" id="whatif-risk-badge">—</div>
-          <div class="whatif-result-district" id="whatif-result-district">—</div>
-        </div>
-      </div>
-      <div class="whatif-briefing" id="whatif-briefing">—</div>
-      <div class="whatif-warnings-list" id="whatif-warnings" style="display:none"></div>
-      <button class="whatif-report-btn" id="whatif-report-btn" onclick="downloadReport()" style="display:none"><i data-lucide="file-text" class="icon-sm"></i> Download PDF Report</button>
-    </div>
-  </div>
-
-</div>
 
 <script>
   if ('serviceWorker' in navigator) {

@@ -17,6 +17,10 @@
     {
       "source": "/diagnostics",
       "destination": "/diagnostics.html"
+    },
+    {
+      "source": "/lab",
+      "destination": "/lab.html"
     }
   ]
 }

@@ -60,9 +60,6 @@ async function init() {
   initCesium();
   await loadDistricts();
   await loadModelCard();
-  initSliders();
-  initToggles();
-  initHistoricalDatePicker();
   await loadActivityLog();
   await loadEvacuationPoints();
   startPrecomputePolling();
@@ -121,21 +118,6 @@ function formatRefreshTime(d) {
   const diffHr = Math.floor(diffMin / 60);
   if (diffHr < 24) return `${diffHr}h ago`;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function initHistoricalDatePicker() {
-  const dateInput = document.getElementById('historical-date');
-  if (!dateInput) return;
-  // Set max to yesterday
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  dateInput.max = yesterday.toISOString().split('T')[0];
-  // Set default to 7 days ago
-  const weekAgo = new Date();
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  dateInput.value = weekAgo.toISOString().split('T')[0];
-  // Set min to 2020-01-01 (Open-Meteo archive limit)
-  dateInput.min = '2020-01-01';
 }
 
 // ════════════════════════════════════════════════ CESIUM 3D GLOBE ══
@@ -704,23 +686,14 @@ function updateModalGauge(score, level, district) {
   badge.className = `risk-badge modal-risk-badge ${level}`;
 }
 
-// ═══════════════════════════════════════ WHAT-IF MODAL ══
-function openWhatIfModal() {
-  if (!state.selectedDistrict) {
+// ═══════════════════════════════════════ LAB REDIRECT ══
+function openDistrictInLab() {
+  const district = state.selectedDistrict;
+  if (!district) {
     alert('Please select a district first.');
     return;
   }
-  document.getElementById('whatif-district-chip').textContent = state.selectedDistrict;
-  document.getElementById('whatif-overlay').classList.add('visible');
-  document.getElementById('whatif-modal').classList.add('visible');
-
-  // Reset result panel
-  document.getElementById('whatif-result').style.display = 'none';
-}
-
-function closeWhatIfModal() {
-  document.getElementById('whatif-overlay').classList.remove('visible');
-  document.getElementById('whatif-modal').classList.remove('visible');
+  window.location.href = `/lab?district=${encodeURIComponent(district)}`;
 }
 
 // ════════════════════════════════════════════ MODEL CARD ══
@@ -744,62 +717,16 @@ async function loadModelCard() {
   }
 }
 
-// ════════════════════════════════════════════════════ SLIDERS ══
-function initSliders() {
-  const rainfall = document.getElementById('rainfall-slider');
-  const inundation = document.getElementById('inundation-slider');
-
-  const update = (el, displayId, fmt) => {
-    const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
-    el.style.setProperty('--pct', `${pct}%`);
-    document.getElementById(displayId).textContent = fmt(el.value);
-  };
-
-  rainfall.addEventListener('input', () => {
-    // Physics Guardrail: If rain > 150, inundation cannot be 0.
-    if (parseFloat(rainfall.value) > 150) {
-      if (parseFloat(inundation.value) < 5000) {
-        inundation.value = 5000;
-        update(inundation, 'inundation-value',
-          v => v >= 1000 ? `${(v / 1000).toFixed(1)}k sqm` : `${v} sqm`);
-      }
-    }
-    update(rainfall, 'rainfall-value', v => `${v} mm`);
-  });
-
-  inundation.addEventListener('input', () => {
-    // Physics Guardrail: If rain > 150, lock inundation minimum.
-    if (parseFloat(rainfall.value) > 150 && parseFloat(inundation.value) < 5000) {
-      inundation.value = 5000;
-    }
-    update(inundation, 'inundation-value',
-      v => v >= 1000 ? `${(v / 1000).toFixed(1)}k sqm` : `${v} sqm`);
-  });
-
-  update(rainfall, 'rainfall-value', v => `${v} mm`);
-  update(inundation, 'inundation-value',
-    v => v >= 1000 ? `${(v / 1000).toFixed(1)}k sqm` : `${v} sqm`);
-}
-
-// ════════════════════════════════════════════════ TOGGLES ══
-function initToggles() {
-  document.querySelectorAll('.toggle-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const field = btn.dataset.field;
-      document.querySelectorAll(`[data-field="${field}"]`)
-        .forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      if (field === 'flood_occurrence') state.flood_occurrence = btn.dataset.value;
-      if (field === 'is_good_to_live') state.is_good_to_live = btn.dataset.value;
+// ════════════════════════════════════════════ EVENT LISTENERS ══
+document.addEventListener('DOMContentLoaded', () => {
+  const selectEl = document.getElementById('district-select');
+  if (selectEl) {
+    selectEl.addEventListener('change', function () {
+      const name = this.value;
+      if (name) selectDistrict(name);
     });
-  });
-
-  // Dropdown change → select district
-  document.getElementById('district-select').addEventListener('change', function () {
-    const name = this.value;
-    if (name) selectDistrict(name);
-  });
-}
+  }
+});
 
 
 
@@ -824,121 +751,6 @@ function downloadReport() {
 }
 
 // ════════════════════════════════════════════ PREDICTION ══
-async function runPrediction() {
-  const district = state.selectedDistrict;
-  if (!district) { alert('Please select a district first.'); return; }
-
-  const btnText = document.getElementById('btn-text');
-  const btnLoader = document.getElementById('btn-loader');
-  const btn = document.getElementById('predict-btn');
-  btnText.style.display = 'none';
-  btnLoader.style.display = 'block';
-  btn.disabled = true;
-
-  const payload = {
-    district,
-    rainfall_7d_mm: parseFloat(document.getElementById('rainfall-slider').value),
-    inundation_area_sqm: parseFloat(document.getElementById('inundation-slider').value),
-    flood_occurrence_current_event: state.flood_occurrence,
-    is_good_to_live: state.is_good_to_live,
-    reason_not_good_to_live: document.getElementById('reason-select').value,
-  };
-
-  try {
-    const resp = await fetch(`${API_BASE}/api/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!resp.ok) {
-      const err = await resp.json();
-      alert(`Prediction error: ${err.detail}`);
-      return;
-    }
-
-    const result = await resp.json();
-    state.lastPredictionId = result.prediction_id;
-    setReportButtonsEnabled(true);
-
-    // Show result in what-if modal
-    showWhatIfResult(result, district);
-
-    // Update the map surface with simulation score for today
-    if (state.districtForecasts[district]) {
-      const dayData = state.districtForecasts[district][0];
-      if (dayData) {
-        dayData.risk_score = result.risk_score;
-        dayData.risk_level = result.risk_level;
-      }
-      update3DRiskSurface(0);
-    }
-
-    // Update main modal gauge with simulation result
-    updateModalGauge(result.risk_score, result.risk_level, district);
-    if (result.briefing) {
-      document.getElementById('modal-briefing-text').textContent = result.briefing;
-    }
-    if (result.warnings?.length > 0) {
-      const wEl = document.getElementById('modal-warnings');
-      wEl.style.display = 'block';
-      wEl.innerHTML = result.warnings.map(w => `<div>${w}</div>`).join('');
-    }
-    document.getElementById('modal-feedback-row').style.display = 'flex';
-
-    appendLogRow(result);
-
-  } catch (err) {
-    console.error('[Predict] Error:', err);
-    alert('Failed to connect to the prediction API. Is the server running?');
-  } finally {
-    btnText.style.display = 'inline';
-    btnLoader.style.display = 'none';
-    btn.disabled = false;
-  }
-}
-
-function showWhatIfResult(result, district) {
-  const panel = document.getElementById('whatif-result');
-  panel.style.display = 'block';
-  panel.classList.add('fade-in');
-
-  const score = result.risk_score;
-  const level = result.risk_level;
-  const arcLen = 251;
-  const colors = { LOW: '#22c55e', MEDIUM: '#eab308', HIGH: '#f97316', EXTREME: '#ef4444' };
-
-  // Mini gauge
-  const arc = document.getElementById('whatif-gauge-arc');
-  const needle = document.getElementById('whatif-gauge-needle');
-  arc.style.strokeDashoffset = arcLen - (score * arcLen);
-  arc.style.stroke = colors[level] || '#22d3ee';
-
-  const angle = -180 + score * 180;
-  const rad = angle * Math.PI / 180;
-  needle.setAttribute('cx', 100 + 80 * Math.cos(rad));
-  needle.setAttribute('cy', 100 + 80 * Math.sin(rad));
-
-  document.getElementById('whatif-gauge-score').textContent = score.toFixed(4);
-  document.getElementById('whatif-gauge-score').style.color = colors[level] || '#22d3ee';
-
-  const badge = document.getElementById('whatif-risk-badge');
-  badge.textContent = level;
-  badge.className = `risk-badge ${level}`;
-
-  document.getElementById('whatif-result-district').textContent = `${district} — Simulated scenario`;
-
-  document.getElementById('whatif-briefing').textContent =
-    result.briefing || `Risk score ${score.toFixed(4)} (${level}) for ${district} under specified scenario.`;
-
-  const warnEl = document.getElementById('whatif-warnings');
-  if (result.warnings?.length > 0) {
-    warnEl.style.display = 'block';
-    warnEl.innerHTML = result.warnings.join('<br>');
-  } else {
-    warnEl.style.display = 'none';
-  }
-}
 
 // ════════════════════════════════════════ ACTIVITY LOG ══
 async function loadActivityLog() {
@@ -1010,204 +822,6 @@ async function submitFeedback(type) {
 }
 
 // ════════════════════════════════════════ BATCH UPLOAD ══
-async function handleBatchUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const text = await file.text();
-  const lines = text.trim().split('\n');
-  if (lines.length < 2) { alert('CSV must have at least a header and one data row.'); return; }
-
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const vals = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-    const obj = {};
-    headers.forEach((h, idx) => { obj[h] = vals[idx] ?? ''; });
-    if (!obj.district) continue;
-    rows.push({
-      district: obj.district,
-      rainfall_7d_mm: parseFloat(obj.rainfall_7d_mm) || 50,
-      inundation_area_sqm: parseFloat(obj.inundation_area_sqm) || 0,
-      flood_occurrence_current_event: obj.flood_occurrence_current_event || 'No',
-      is_good_to_live: obj.is_good_to_live || 'Yes',
-      reason_not_good_to_live: obj.reason_not_good_to_live || 'None',
-    });
-  }
-
-  if (!rows.length) { alert('No valid rows found in CSV.'); return; }
-
-  try {
-    const resp = await fetch(`${API_BASE}/api/predict/batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows }),
-    });
-    const data = await resp.json();
-    data.results.forEach(r => { if (r.risk_score !== undefined) appendLogRow(r); });
-    alert(`Batch complete: ${data.total} predictions processed.`);
-  } catch (err) {
-    alert('Batch upload failed. Check console for details.');
-    console.error('[Batch]', err);
-  }
-}
-
-// ═════════════════════════════════ HISTORICAL SIMULATION ══
-async function runHistoricalSimulation() {
-  const dateInput = document.getElementById('historical-date');
-  const dateVal = dateInput?.value;
-  if (!dateVal) {
-    alert('Please select a date first.');
-    return;
-  }
-
-  // Validate it's a past date
-  const selected = new Date(dateVal);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (selected >= today) {
-    alert('Please select a past date for historical simulation.');
-    return;
-  }
-
-  const btn = document.getElementById('historical-btn');
-  const btnText = document.getElementById('hist-btn-text');
-  const btnLoader = document.getElementById('hist-btn-loader');
-  btn.disabled = true;
-  btnText.style.display = 'none';
-  btnLoader.style.display = 'block';
-
-  // Show loading overlay on the map
-  const mapSection = document.querySelector('.map-section');
-  const overlay = document.createElement('div');
-  overlay.className = 'historical-loading-overlay';
-  overlay.id = 'hist-loading-overlay';
-  overlay.innerHTML = `
-    <div class="hist-spinner"></div>
-    <div class="historical-loading-text">🕰️ Time-Travelling to ${new Date(dateVal).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}...</div>
-    <div class="historical-loading-subtext">Fetching actual historical weather data for all 25 districts from Open-Meteo archives</div>
-  `;
-  mapSection.appendChild(overlay);
-
-  try {
-    const resp = await fetch(`${API_BASE}/api/simulate/historical?date=${encodeURIComponent(dateVal)}`);
-    if (!resp.ok) {
-      const err = await resp.json();
-      throw new Error(err.detail || 'Historical simulation failed');
-    }
-
-    const data = await resp.json();
-
-    // Save current live forecasts so we can restore later
-    if (!state.historicalMode) {
-      state.savedLiveForecasts = JSON.parse(JSON.stringify(state.districtForecasts));
-      state.savedLiveRiskData = JSON.parse(JSON.stringify(state.districtRiskData));
-    }
-
-    // Inject historical results into districtForecasts (as single-day arrays)
-    for (const [name, result] of Object.entries(data.districts)) {
-      state.districtForecasts[name] = [{
-        date: result.date,
-        rainfall_7d_mm: result.rainfall_7d_mm,
-        risk_score: result.risk_score,
-        risk_level: result.risk_level,
-        cached: false,
-        source: 'historical',
-      }];
-      state.districtRiskData[name] = state.districtForecasts[name][0];
-    }
-
-    // Mark historical mode
-    state.historicalMode = true;
-    state.historicalDate = dateVal;
-    state.activeForecastIndex = 0;
-
-    // Re-render the 3D surface with historical data
-    update3DRiskSurface(0);
-
-    // Show active banner
-    const banner = document.getElementById('historical-active-banner');
-    banner.style.display = 'flex';
-    document.getElementById('hist-banner-date').textContent =
-      new Date(dateVal).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
-
-    // Update the LIVE chip to show historical mode
-    const liveChip = document.querySelector('.live-chip');
-    if (liveChip) {
-      liveChip.innerHTML = '<span class="pulse-dot" style="background:var(--accent-purple)"></span><span>HISTORICAL</span>';
-      liveChip.style.borderColor = 'rgba(139, 92, 246, 0.3)';
-      liveChip.style.color = 'var(--accent-purple)';
-    }
-
-    // If a district is currently selected, update its modal with historical data
-    if (state.selectedDistrict && data.districts[state.selectedDistrict]) {
-      const histResult = data.districts[state.selectedDistrict];
-      state.currentForecast = state.districtForecasts[state.selectedDistrict];
-      renderModalForecastList();
-      updateModalGauge(histResult.risk_score, histResult.risk_level, state.selectedDistrict);
-      document.getElementById('modal-briefing-text').textContent =
-        `🕰️ Historical Backtest — ${state.selectedDistrict} on ${dateVal}: ` +
-        `Actual 7-day rainfall ${histResult.rainfall_7d_mm.toFixed(0)}mm from Open-Meteo archive. ` +
-        `Predicted risk score ${histResult.risk_score.toFixed(4)} (${histResult.risk_level}).`;
-    }
-
-    console.log(`[Historical] Loaded ${data.ready}/${data.total} districts for ${dateVal}`);
-    if (data.errors?.length > 0) {
-      console.warn('[Historical] Errors:', data.errors);
-    }
-
-  } catch (err) {
-    console.error('[Historical] Error:', err);
-    alert(`Historical simulation failed: ${err.message}`);
-  } finally {
-    // Remove loading overlay
-    const loadingOverlay = document.getElementById('hist-loading-overlay');
-    if (loadingOverlay) loadingOverlay.remove();
-
-    btnText.style.display = 'inline';
-    btnLoader.style.display = 'none';
-    btn.disabled = false;
-  }
-}
-
-function returnToLive() {
-  if (!state.historicalMode) return;
-
-  // Restore saved live forecasts
-  if (state.savedLiveForecasts) {
-    state.districtForecasts = state.savedLiveForecasts;
-    state.districtRiskData = state.savedLiveRiskData;
-    state.savedLiveForecasts = null;
-    state.savedLiveRiskData = null;
-  }
-
-  state.historicalMode = false;
-  state.historicalDate = null;
-  state.activeForecastIndex = 0;
-
-  // Re-render the 3D surface with live data
-  update3DRiskSurface(0);
-
-  // Hide banner
-  document.getElementById('historical-active-banner').style.display = 'none';
-
-  // Restore LIVE chip
-  const liveChip = document.querySelector('.live-chip');
-  if (liveChip) {
-    liveChip.innerHTML = '<span class="pulse-dot"></span><span>LIVE</span>';
-    liveChip.style.borderColor = 'rgba(34,197,94,0.3)';
-    liveChip.style.color = 'var(--risk-low)';
-  }
-
-  // Restore selected district modal if open
-  if (state.selectedDistrict && state.districtForecasts[state.selectedDistrict]) {
-    state.currentForecast = state.districtForecasts[state.selectedDistrict];
-    renderModalForecastList();
-    selectForecastDay(0);
-  }
-
-  console.log('[Historical] Returned to live mode.');
-}
 
 // ════════════════════════════════════════════ EVACUATION POINTS ══
 async function loadEvacuationPoints() {

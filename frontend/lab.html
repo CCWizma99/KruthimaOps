@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#050d1a" />
+  <title>Experiment Lab — Flood Risk Simulator & Backtester</title>
+  <meta name="description" content="Dedicated machine learning simulation laboratory. Run scenario parameters, historical backtests, and batch uploads." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* ─── LAB EXCLUSIVE PREMIUM STYLES ─── */
+    body {
+      overflow-y: auto;
+      background: radial-gradient(circle at 10% 20%, rgba(34, 211, 238, 0.05), transparent 40%),
+                  radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.05), transparent 45%),
+                  #050d1a !important;
+    }
+    
+    .lab-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 20px 60px 20px;
+    }
+
+    .lab-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      background: rgba(10, 22, 40, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: var(--radius-lg);
+      margin-bottom: 24px;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .lab-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .lab-brand-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(34, 211, 238, 0.1);
+      border: 1px solid rgba(34, 211, 238, 0.3);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-cyan);
+    }
+
+    .lab-brand-text h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .lab-brand-text p {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin: 2px 0 0 0;
+    }
+
+    .lab-nav {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .btn-back {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .btn-back:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Tab Layout */
+    .lab-tabs {
+      display: flex;
+      gap: 12px;
+      background: rgba(10, 22, 40, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      padding: 6px;
+      border-radius: var(--radius-md);
+      margin-bottom: 24px;
+      max-width: 600px;
+    }
+
+    .lab-tab-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .lab-tab-btn:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .lab-tab-btn.active {
+      color: var(--accent-cyan);
+      background: rgba(34, 211, 238, 0.1);
+      box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.2);
+    }
+
+    /* Content Cards */
+    .lab-content-section {
+      display: none;
+    }
+
+    .lab-content-section.active {
+      display: block;
+      animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .lab-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .lab-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .lab-card {
+      background: rgba(10, 22, 40, 0.5);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .lab-card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      padding-bottom: 12px;
+    }
+
+    /* Chart styles */
+    .chart-container {
+      background: rgba(5, 13, 26, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      position: relative;
+    }
+
+    .chart-tooltip {
+      position: absolute;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(34, 211, 238, 0.4);
+      border-radius: 4px;
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      color: var(--text-primary);
+      pointer-events: none;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      z-index: 10;
+    }
+
+    /* Sandbox Sandbox Card List */
+    .sandbox-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 250px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .sandbox-item {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s;
+    }
+
+    .sandbox-item:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: rgba(34, 211, 238, 0.2);
+    }
+
+    /* Risk Matrix Grid */
+    .matrix-table-wrapper {
+      max-height: 500px;
+      overflow-y: auto;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: var(--radius-md);
+      background: rgba(5, 13, 26, 0.3);
+    }
+
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .matrix-table th {
+      position: sticky;
+      top: 0;
+      background: #0d1e33;
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--text-muted);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      z-index: 2;
+    }
+
+    .matrix-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      color: var(--text-primary);
+    }
+
+    .matrix-table tr:hover td {
+      background: rgba(255,255,255,0.02);
+    }
+
+    /* Comparison Sandbox Modal */
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 10px;
+    }
+
+    .comparison-col {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: var(--radius-md);
+      padding: 16px;
+    }
+
+    .comparison-col.highlight-cyan {
+      border-color: rgba(34, 211, 238, 0.3);
+      background: rgba(34, 211, 238, 0.01);
+    }
+
+    .comparison-col.highlight-purple {
+      border-color: rgba(139, 92, 246, 0.3);
+      background: rgba(139, 92, 246, 0.01);
+    }
+
+    .comparison-param-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px dashed rgba(255,255,255,0.05);
+      font-size: 0.8rem;
+    }
+
+    .comparison-param-row:last-child {
+      border-bottom: none;
+    }
+
+    /* Upload zone styling */
+    .drop-zone-large {
+      border: 2px dashed rgba(34, 211, 238, 0.25);
+      border-radius: var(--radius-lg);
+      padding: 40px 20px;
+      text-align: center;
+      background: rgba(34, 211, 238, 0.02);
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .drop-zone-large:hover {
+      border-color: var(--accent-cyan);
+      background: rgba(34, 211, 238, 0.05);
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="lab-container">
+
+  <!-- ══════════════════════════════════════════════ HEADER ══ -->
+  <header class="lab-header">
+    <div class="lab-brand">
+      <div class="lab-brand-icon"><i data-lucide="flask-conical"></i></div>
+      <div class="lab-brand-text">
+        <h1>Experiment Lab</h1>
+        <p>Simulation Sandbox & Model Calibration Facility</p>
+      </div>
+    </div>
+
+    <div class="lab-nav">
+      <div class="status-chip live-chip">
+        <span class="pulse-dot"></span>
+        <span>LIVE RUNTIME</span>
+      </div>
+      <a href="/" class="btn-back">
+        <i data-lucide="arrow-left"></i> Back to Dashboard
+      </a>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════════ TABS ══ -->
+  <nav class="lab-tabs">
+    <button class="lab-tab-btn active" onclick="switchTab('simulator')">
+      <i data-lucide="sliders-horizontal" class="icon-sm"></i> Scenario Simulator
+    </button>
+    <button class="lab-tab-btn" onclick="switchTab('backtest')">
+      <i data-lucide="history" class="icon-sm"></i> Historical Backtest
+    </button>
+    <button class="lab-tab-btn" onclick="switchTab('batch')">
+      <i data-lucide="upload-cloud" class="icon-sm"></i> Batch Prediction
+    </button>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════ TAB CONTENT: SIMULATOR ══ -->
+  <section id="tab-simulator" class="lab-content-section active">
+    <div class="lab-grid">
+      
+      <!-- Left side: Configuration inputs -->
+      <div class="lab-card">
+        <h2 class="lab-card-title"><i data-lucide="settings" class="icon-sm"></i> Scenario Configuration</h2>
+        
+        <div class="panel-section">
+          <label class="field-label"><i data-lucide="map-pin" class="icon-sm"></i> Target District</label>
+          <div class="select-wrapper">
+            <select id="lab-district-select" class="styled-select">
+              <option value="">Select district...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Rainfall sum (7-day forecast)</span>
+            <span class="slider-value" id="lab-rainfall-value">50 mm</span>
+          </div>
+          <input type="range" id="lab-rainfall-slider" class="styled-slider" min="0" max="500" value="50" step="5" />
+          <div class="slider-ticks">
+            <span>0</span><span>100</span><span>200</span><span>300</span><span>400</span><span>500mm</span>
+          </div>
+        </div>
+
+        <div class="slider-group">
+          <div class="slider-header">
+            <span>Estimated Inundation Area</span>
+            <span class="slider-value" id="lab-inundation-value">0 sqm</span>
+          </div>
+          <input type="range" id="lab-inundation-slider" class="styled-slider" min="0" max="50000" value="0" step="500" />
+          <div class="slider-ticks">
+            <span>0</span><span>10k</span><span>25k</span><span>50k sqm</span>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="toggle-group">
+          <label class="field-label">Active Flooding in Area</label>
+          <div class="toggle-row">
+            <button class="toggle-btn active" id="lab-flood-no" onclick="setToggleValue('flood_occurrence', 'No', this)">No</button>
+            <button class="toggle-btn" id="lab-flood-yes" onclick="setToggleValue('flood_occurrence', 'Yes', this)">Yes</button>
+          </div>
+        </div>
+
+        <div class="toggle-group">
+          <label class="field-label">Safe to Live / Stay</label>
+          <div class="toggle-row">
+            <button class="toggle-btn active" id="lab-live-yes" onclick="setToggleValue('is_good_to_live', 'Yes', this)">Yes</button>
+            <button class="toggle-btn" id="lab-live-no" onclick="setToggleValue('is_good_to_live', 'No', this)">No</button>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <label class="field-label">Primary Reason (if unsafe)</label>
+          <select id="lab-reason-select" class="styled-select">
+            <option value="None">None</option>
+            <option value="Flood Risk">Flood Risk</option>
+            <option value="Water Contamination">Water Contamination</option>
+            <option value="Infrastructure Damage">Infrastructure Damage</option>
+            <option value="Landslide Risk">Landslide Risk</option>
+          </select>
+        </div>
+
+        <button class="predict-btn" id="lab-predict-btn" onclick="runLabSimulation()" style="margin-top: 10px;">
+          <span id="lab-btn-text"><i data-lucide="play" class="icon-sm" style="margin-right:8px"></i> Run Prediction Analysis</span>
+          <div class="btn-loader" id="lab-btn-loader" style="display:none"></div>
+        </button>
+      </div>
+
+      <!-- Right side: Results & Sweeps -->
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        
+        <!-- Output analysis card -->
+        <div class="lab-card">
+          <h2 class="lab-card-title"><i data-lucide="bar-chart-3" class="icon-sm"></i> Simulated Risk Output</h2>
+          
+          <div class="district-modal-body" style="padding: 0; display: grid; grid-template-columns: 140px 1fr; gap: 20px;">
+            <!-- Gauge -->
+            <div class="modal-gauge-col" style="padding: 0; align-self: center;">
+              <div class="modal-gauge-wrap" style="width: 140px; margin: 0;">
+                <svg class="modal-gauge-svg" viewBox="0 0 200 120">
+                  <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#1e2a3a" stroke-width="18" stroke-linecap="round"/>
+                  <path id="lab-gauge-arc" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#22d3ee" stroke-width="18" stroke-linecap="round" stroke-dasharray="251" stroke-dashoffset="251"/>
+                  <circle id="lab-gauge-needle" cx="20" cy="100" r="5" fill="white"/>
+                </svg>
+                <div class="modal-gauge-center">
+                  <span class="modal-gauge-score" id="lab-gauge-score" style="font-size: 1.5rem;">—</span>
+                </div>
+              </div>
+              <div class="risk-badge modal-risk-badge" id="lab-risk-badge" style="width:100%; margin-top: 8px;">AWAITING</div>
+            </div>
+
+            <!-- Meta details -->
+            <div style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
+              <h3 id="lab-result-title" style="font-size:1.1rem; color: var(--text-primary); margin:0;">Select a district & run</h3>
+              <p id="lab-result-subtitle" style="font-size:0.8rem; color: var(--text-muted); margin:0;">Simulator output is generated live using the baseline ensemble pipeline.</p>
+              
+              <div class="modal-feedback-row" id="lab-feedback-row" style="display:none; margin-top:8px;">
+                <span class="feedback-label">Feedback:</span>
+                <button class="feedback-btn positive" id="lab-btn-thumbup" onclick="submitLabFeedback('accurate')"><i data-lucide="thumbs-up" class="icon-sm"></i></button>
+                <button class="feedback-btn negative" id="lab-btn-thumbdown" onclick="submitLabFeedback('inaccurate')"><i data-lucide="thumbs-down" class="icon-sm"></i></button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Briefing panel -->
+          <div class="chart-container" style="background: rgba(255,255,255,0.01);">
+            <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: var(--accent-cyan); margin-bottom: 6px;"><i data-lucide="cpu" class="icon-sm" style="vertical-align:middle;margin-right:4px;"></i> AI Briefing Advisory</div>
+            <div id="lab-briefing-text" style="font-size: 0.85rem; color: var(--text-primary); line-height: 1.5;">
+              Configure scenario parameters on the left and run analysis to get live AI briefed safety advisories.
+            </div>
+            <div id="lab-warnings" class="modal-warnings" style="display:none; margin-top:10px;"></div>
+          </div>
+
+          <!-- Actions -->
+          <div style="display: flex; gap: 10px; margin-top: 4px;">
+            <button class="btn primary" id="lab-save-btn" onclick="saveToSandbox()" disabled style="flex: 1; justify-content: center;">
+              <i data-lucide="bookmark" class="icon-sm"></i> Save Scenario
+            </button>
+            <button class="btn positive" id="lab-report-btn" onclick="downloadLabReport()" disabled style="flex: 1; justify-content: center;">
+              <i data-lucide="file-text" class="icon-sm"></i> PDF Report
+            </button>
+          </div>
+        </div>
+
+        <!-- Rainfall Sensitivity curve (interactive) -->
+        <div class="lab-card">
+          <h2 class="lab-card-title">
+            <i data-lucide="line-chart" class="icon-sm"></i> 
+            Rainfall Sensitivity Sweep
+          </h2>
+          <p class="field-hint" style="margin-top: -12px;">Simulates risk scores across varying levels of 7-day rainfall for the selected district.</p>
+          
+          <div class="chart-container">
+            <div class="chart-tooltip" id="sweep-tooltip"></div>
+            <!-- Dynamic SVG Chart -->
+            <svg id="sweep-chart" viewBox="0 0 500 220" style="width: 100%; height: auto; display: block; overflow: visible;">
+              <!-- Grid lines -->
+              <line x1="40" y1="20" x2="480" y2="20" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+              <line x1="40" y1="70" x2="480" y2="70" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+              <line x1="40" y1="120" x2="480" y2="120" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+              <line x1="40" y1="170" x2="480" y2="170" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+              
+              <!-- Axes -->
+              <line x1="40" y1="20" x2="40" y2="170" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+              <line x1="40" y1="170" x2="480" y2="170" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+              
+              <!-- Y labels (Risk Score) -->
+              <text x="30" y="24" fill="var(--text-muted)" font-size="9" text-anchor="end">1.0</text>
+              <text x="30" y="74" fill="var(--text-muted)" font-size="9" text-anchor="end">0.66</text>
+              <text x="30" y="124" fill="var(--text-muted)" font-size="9" text-anchor="end">0.33</text>
+              <text x="30" y="174" fill="var(--text-muted)" font-size="9" text-anchor="end">0.0</text>
+              
+              <!-- Axis titles -->
+              <text x="260" y="200" fill="var(--text-muted)" font-size="10" text-anchor="middle">Rainfall sum (mm)</text>
+              <text x="12" y="95" fill="var(--text-muted)" font-size="10" text-anchor="middle" transform="rotate(-90 12 95)">Risk Score</text>
+              
+              <!-- Chart data path (will be injected) -->
+              <path id="sweep-line" d="M 40 170" fill="none" stroke="var(--accent-cyan)" stroke-width="2.5" stroke-linecap="round"/>
+              <path id="sweep-area" d="M 40 170" fill="url(#chart-grad)" opacity="0.1"/>
+              
+              <!-- Data interaction dots (injected dynamically) -->
+              <g id="sweep-dots"></g>
+              
+              <!-- Gradient definition -->
+              <defs>
+                <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--accent-cyan)"/>
+                  <stop offset="100%" stop-color="transparent"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Saved scenarios Comparative Sandbox -->
+        <div class="lab-card">
+          <h2 class="lab-card-title"><i data-lucide="columns" class="icon-sm"></i> Comparative Sandbox</h2>
+          
+          <div class="sandbox-list" id="sandbox-card-list">
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 20px;">
+              No saved scenarios. Save runs above to perform comparisons.
+            </div>
+          </div>
+          
+          <!-- Compare panel (shown when 2 items are selected) -->
+          <div id="sandbox-comparison-panel" style="display:none; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h3 style="font-size: 0.9rem; color: var(--text-primary); margin:0;">Scenario Comparison Matrix</h3>
+              <button class="btn ghost" style="padding: 4px 8px; font-size: 0.72rem;" onclick="clearComparison()">Clear</button>
+            </div>
+            <div class="comparison-grid" id="comparison-grid-content">
+              <!-- Comparison columns go here -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════ TAB CONTENT: BACKTEST ══ -->
+  <section id="tab-backtest" class="lab-content-section">
+    <div class="lab-grid">
+      
+      <!-- Control panel -->
+      <div class="lab-card">
+        <h2 class="lab-card-title"><i data-lucide="calendar" class="icon-sm"></i> Historical Backtesting</h2>
+        <p class="field-hint" style="margin-top: -12px;">Trigger a full national backtest for a past date to check how models align with historical rainfall data.</p>
+        
+        <div class="panel-section">
+          <label class="field-label"><i data-lucide="clock" class="icon-sm"></i> Target Backtest Date</label>
+          <input type="date" id="lab-historical-date" class="styled-date-input" style="max-width: 100%;" />
+        </div>
+        
+        <button class="predict-btn" id="lab-backtest-btn" onclick="runLabBacktest()" style="margin-top: 10px;">
+          <span id="lab-backtest-text"><i data-lucide="rewind" class="icon-sm" style="margin-right:8px"></i> Execute Time Travel</span>
+          <div class="btn-loader" id="lab-backtest-loader" style="display:none"></div>
+        </button>
+
+        <div class="divider"></div>
+
+        <!-- Summary of risk levels -->
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <h3 style="font-size: 0.85rem; text-transform: uppercase; font-weight: 700; color: var(--text-muted); margin: 0;">National Risk Summary</h3>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center;">
+            <div style="background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.15); border-radius: 6px; padding: 10px 4px;">
+              <div style="font-size: 0.65rem; color: #22c55e; font-weight:700;">LOW</div>
+              <div id="stat-count-low" style="font-size: 1.4rem; font-weight:800; color: #e2e8f0; margin-top:2px;">—</div>
+            </div>
+            <div style="background: rgba(234,179,8,0.06); border: 1px solid rgba(234,179,8,0.15); border-radius: 6px; padding: 10px 4px;">
+              <div style="font-size: 0.65rem; color: #eab308; font-weight:700;">MEDIUM</div>
+              <div id="stat-count-medium" style="font-size: 1.4rem; font-weight:800; color: #e2e8f0; margin-top:2px;">—</div>
+            </div>
+            <div style="background: rgba(249,115,22,0.06); border: 1px solid rgba(249,115,22,0.15); border-radius: 6px; padding: 10px 4px;">
+              <div style="font-size: 0.65rem; color: #f97316; font-weight:700;">HIGH</div>
+              <div id="stat-count-high" style="font-size: 1.4rem; font-weight:800; color: #e2e8f0; margin-top:2px;">—</div>
+            </div>
+            <div style="background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15); border-radius: 6px; padding: 10px 4px;">
+              <div style="font-size: 0.65rem; color: #ef4444; font-weight:700;">EXTREME</div>
+              <div id="stat-count-extreme" style="font-size: 1.4rem; font-weight:800; color: #e2e8f0; margin-top:2px;">—</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- National Matrix list -->
+      <div class="lab-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.04); padding-bottom: 12px;">
+          <h2 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0; display:flex; align-items:center; gap:8px;">
+            <i data-lucide="grid" class="icon-sm"></i>
+            National Risk Matrix
+          </h2>
+          <button class="btn ghost" id="lab-export-backtest-btn" disabled style="padding: 4px 10px; font-size: 0.75rem;" onclick="exportBacktestCSV()">
+            <i data-lucide="download" class="icon-sm"></i> Export CSV
+          </button>
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top:-8px; margin-bottom: 4px;">
+          <input type="text" id="lab-backtest-search" placeholder="Search district..." oninput="filterBacktestTable()" style="padding: 6px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.2); color:white; font-size:0.8rem; flex:1;" />
+          <select id="lab-backtest-sort" onchange="sortBacktestTable()" style="padding: 6px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.2); color:white; font-size:0.8rem; width:150px;">
+            <option value="risk-desc">Risk (Highest)</option>
+            <option value="risk-asc">Risk (Lowest)</option>
+            <option value="name-asc">Alphabetical</option>
+          </select>
+        </div>
+
+        <div class="matrix-table-wrapper">
+          <table class="matrix-table" id="backtest-table">
+            <thead>
+              <tr>
+                <th>District</th>
+                <th>Rainfall (7d)</th>
+                <th>Simulated Score</th>
+                <th>Risk Level</th>
+              </tr>
+            </thead>
+            <tbody id="backtest-table-body">
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                  Pick a target date and trigger backtest to populate grid.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════ TAB CONTENT: BATCH ══ -->
+  <section id="tab-batch" class="lab-content-section">
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+      
+      <!-- Upload area -->
+      <div class="lab-card">
+        <h2 class="lab-card-title"><i data-lucide="upload-cloud" class="icon-sm"></i> Batch Prediction Pipeline</h2>
+        <p class="field-hint" style="margin-top: -12px;">Provide a CSV file with columns `district`, `rainfall_7d_mm`, `inundation_area_sqm`, `flood_occurrence_current_event`, `is_good_to_live`, and `reason_not_good_to_live` to perform mass validation.</p>
+        
+        <div class="drop-zone-large" id="lab-drop-zone" onclick="document.getElementById('lab-csv-input').click()">
+          <i data-lucide="file-spreadsheet" style="width: 48px; height: 48px; color: var(--accent-cyan);"></i>
+          <span style="font-weight:600; font-size:0.95rem;">Drag and drop scenario CSV or click to browse</span>
+          <span style="color:var(--text-muted); font-size:0.75rem;">Supports standard comma-separated files</span>
+          <input type="file" id="lab-csv-input" accept=".csv" style="display:none" onchange="handleLabBatchUpload(event)" />
+        </div>
+        
+        <div style="display:flex; justify-content: space-between; align-items:center; background: rgba(255,255,255,0.01); border:1px solid rgba(255,255,255,0.03); border-radius:6px; padding: 12px 16px; font-size: 0.8rem;">
+          <span style="color:var(--text-muted);"><i data-lucide="help-circle" class="icon-sm" style="vertical-align:middle;margin-right:6px;"></i> Don't have a template?</span>
+          <button class="btn ghost" style="padding: 4px 8px; font-size: 0.72rem;" onclick="downloadSampleCSV()">Get Sample Template ↓</button>
+        </div>
+      </div>
+
+      <!-- Results table -->
+      <div class="lab-card" id="batch-results-card" style="display:none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.04); padding-bottom: 12px;">
+          <h2 style="font-size: 1rem; font-weight: 700; color: var(--text-primary); margin: 0; display:flex; align-items:center; gap:8px;">
+            <i data-lucide="list" class="icon-sm"></i>
+            Batch Output Logs
+          </h2>
+          <button class="btn positive" style="padding: 4px 10px; font-size: 0.75rem;" onclick="exportBatchResultsCSV()">
+            <i data-lucide="download" class="icon-sm"></i> Export Outputs
+          </button>
+        </div>
+
+        <!-- Search filter -->
+        <div style="margin-top:-8px;">
+          <input type="text" id="lab-batch-search" placeholder="Search results..." oninput="filterBatchTable()" style="padding: 6px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.2); color:white; font-size:0.8rem; width:100%;" />
+        </div>
+
+        <div class="matrix-table-wrapper" style="max-height: 400px;">
+          <table class="matrix-table" id="batch-results-table">
+            <thead>
+              <tr>
+                <th>Row ID</th>
+                <th>District</th>
+                <th>Rainfall (7d)</th>
+                <th>Inundation</th>
+                <th>Simulated Score</th>
+                <th>Risk Level</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="batch-results-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+<script src="/static/lab.js"></script>
+<script>lucide.createIcons();</script>
+</body>
+</html>

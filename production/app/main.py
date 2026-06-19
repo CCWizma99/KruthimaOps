@@ -175,6 +175,14 @@ async def diagnostics_page():
             return f.read()
     return HTMLResponse("<h1>Diagnostics UI not found.</h1>")
 
+@app.get("/lab", response_class=HTMLResponse, include_in_schema=False)
+async def experiment_lab_page():
+    page = os.path.join(static_dir, "lab.html")
+    if os.path.exists(page):
+        with open(page, encoding="utf-8") as f:
+            return f.read()
+    return HTMLResponse("<h1>Experiment Lab UI not found.</h1>")
+
 @app.get("/api/config/cesium-token", tags=["System"])
 async def get_cesium_token():
     token = os.getenv("CESIUM_ION_TOKEN", "")
