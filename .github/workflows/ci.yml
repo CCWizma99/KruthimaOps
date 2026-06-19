@@ -48,6 +48,8 @@ jobs:
         working-directory: ./frontend
 
     - name: Deploy Backend to Railway
-      uses: railwayapp/action-deploy@v1
-      with:
-        railway_token: ${{ secrets.RAILWAY_TOKEN }}
+      run: |
+        npm install -g @railway/cli
+        railway up --service production
+      env:
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
