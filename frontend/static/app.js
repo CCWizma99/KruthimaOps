@@ -467,7 +467,8 @@ function startPrecomputePolling() {
       }
 
       if (state.selectedDistrict) {
-        document.getElementById('simulate-btn').disabled = false;
+        const simBtn = document.getElementById('simulate-btn');
+        if (simBtn) simBtn.disabled = false;
       }
 
       if (data.ready >= data.total) {
@@ -509,7 +510,8 @@ function selectDistrict(name) {
   if (!info) return;
 
   // Enable simulate btn
-  document.getElementById('simulate-btn').disabled = false;
+  const simBtn = document.getElementById('simulate-btn');
+  if (simBtn) simBtn.disabled = false;
 
   // Fly to district
   flyToDistrict(name, info.center_lat, info.center_lon);
