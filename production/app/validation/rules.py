@@ -74,6 +74,11 @@ def validate(payload: PredictRequest) -> Tuple[Dict[str, Any], List[str]]:
             "Physics Violation: Massive inundation (>50000 sqm) contradicts 'No' active flooding."
         )
 
+    if 10000 < data["inundation_area_sqm"] <= 50000 and data["flood_occurrence_current_event"] == "No":
+        warnings.append(
+            "⚠ High inundation area reported despite no active flood."
+        )
+
     if data["flood_occurrence_current_event"] == "Yes" and data["is_good_to_live"] == "Yes":
         warnings.append(
             "⚠ Inconsistent survey: active flooding reported but location rated as safe to live."
