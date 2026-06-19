@@ -12,7 +12,7 @@ load_dotenv(os.path.join(BASE_DIR, '.env'))
 load_dotenv() # Also try current directory just in case
 
 # ── Model (Reload Triggered) ─────────────────────────────────────────
-MODEL_VERSION   = "prod_v1k.2"
+MODEL_VERSION   = "prod_v1000"
 MODELS_BASE_DIR = os.path.join(BASE_DIR, "models")
 
 # ── Monitoring ───────────────────────────────────────────────────────
