@@ -188,15 +188,18 @@ def infer(features_dict: dict) -> tuple[float, float]:
     flood_occurrence = str(features_dict.get("flood_occurrence_current_event", "No")).strip().lower()
     is_good_to_live = str(features_dict.get("is_good_to_live", "Yes")).strip().lower()
 
-    R = min(rain / 300.0, 1.0) if rain > 0.0 else 0.0
-    I = min(inund / 25000.0, 1.0) if inund > 0.0 else 0.0
+    # Lowered rainfall cap to 250mm to max out risk faster during heavy monsoons
+    R = min(rain / 250.0, 1.0) if rain > 0.0 else 0.0
+    I = min(inund / 20000.0, 1.0) if inund > 0.0 else 0.0
     F = 1.0 if flood_occurrence == "yes" else 0.0
     U = 1.0 if is_good_to_live == "no" else 0.0
-    pri = 0.3 * R + 0.3 * I + 0.2 * F + 0.2 * U
+    
+    pri = 0.4 * R + 0.2 * I + 0.2 * F + 0.2 * U
 
     raw_risk = (0.58 - raw_score) / (0.58 - 0.38)
     raw_risk = float(np.clip(raw_risk, 0.0, 1.0))
 
+    # Shift blend to 60% ML / 40% Physical to aggressively flag extreme weather
     blended = 0.6 * raw_risk + 0.4 * pri
     calibrated = 0.05 + blended * 0.90
 
