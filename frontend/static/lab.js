@@ -539,7 +539,6 @@ function initDatePicker() {
   if (!el) return;
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  el.max = yesterday.toISOString().split('T')[0];
   el.value = yesterday.toISOString().split('T')[0];
   el.min = '2020-01-01';
 }

@@ -363,7 +363,7 @@
       <i data-lucide="sliders-horizontal" class="icon-sm"></i> Scenario Simulator
     </button>
     <button class="lab-tab-btn" onclick="switchTab('backtest')">
-      <i data-lucide="history" class="icon-sm"></i> Historical Backtest
+      <i data-lucide="history" class="icon-sm"></i> Time Travel Simulation
     </button>
     <button class="lab-tab-btn" onclick="switchTab('batch')">
       <i data-lucide="upload-cloud" class="icon-sm"></i> Batch Prediction
@@ -585,11 +585,11 @@
       
       <!-- Control panel -->
       <div class="lab-card">
-        <h2 class="lab-card-title"><i data-lucide="calendar" class="icon-sm"></i> Historical Backtesting</h2>
-        <p class="field-hint" style="margin-top: -12px;">Trigger a full national backtest for a past date to check how models align with historical rainfall data.</p>
+        <h2 class="lab-card-title"><i data-lucide="calendar" class="icon-sm"></i> Time Travel Simulation</h2>
+        <p class="field-hint" style="margin-top: -12px;">Trigger a full national simulation for any date (past or future) to check model alignment with actual or forecasted rainfall.</p>
         
         <div class="panel-section">
-          <label class="field-label"><i data-lucide="clock" class="icon-sm"></i> Target Backtest Date</label>
+          <label class="field-label"><i data-lucide="clock" class="icon-sm"></i> Target Date (Past or Future)</label>
           <input type="date" id="lab-historical-date" class="styled-date-input" style="max-width: 100%;" />
         </div>
         
