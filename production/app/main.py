@@ -421,12 +421,6 @@ async def simulate_historical(date: str):
     except ValueError:
         raise HTTPException(status_code=422, detail=f"Invalid date: {date}")
 
-    if target >= d_type.today():
-        raise HTTPException(
-            status_code=422,
-            detail="Historical simulation requires a past date. Use the forecast API for future dates."
-        )
-
     ref = get_district_reference()
     districts = sorted(ref.keys())
     
@@ -558,9 +552,11 @@ async def predict_subdivisions(district_name: str, date: str = None):
     lats_str = ",".join(str(s["lat"]) for s in subs)
     lons_str = ",".join(str(s["lon"]) for s in subs)
     
-    if date:
-        from datetime import datetime, timedelta
-        target_dt = datetime.strptime(date, "%Y-%m-%d")
+    from datetime import datetime, timedelta, date as d_type
+    target_dt = datetime.strptime(date, "%Y-%m-%d").date() if date else d_type.today()
+    today_dt = d_type.today()
+    
+    if target_dt < today_dt:
         start_date = (target_dt - timedelta(days=7)).strftime("%Y-%m-%d")
         end_date = (target_dt - timedelta(days=1)).strftime("%Y-%m-%d")
         url = (
@@ -571,11 +567,14 @@ async def predict_subdivisions(district_name: str, date: str = None):
             f"&timezone=Asia%2FColombo"
         )
     else:
+        past_days = 7
+        future_offset = (target_dt - today_dt).days + 3
+        forecast_days = max(future_offset, 7)
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={lats_str}&longitude={lons_str}"
             f"&daily=precipitation_sum"
-            f"&past_days=7&forecast_days=1"
+            f"&past_days={past_days}&forecast_days={forecast_days}"
             f"&timezone=Asia%2FColombo"
         )
     
@@ -590,14 +589,22 @@ async def predict_subdivisions(district_name: str, date: str = None):
     results = []
     for idx, sub in enumerate(subs):
         sum_7d = 0.0
-        if res_data and isinstance(res_data, list) and idx < len(res_data):
-            daily = res_data[idx].get("daily", {})
+        if res_data:
+            if isinstance(res_data, list) and idx < len(res_data):
+                point_data = res_data[idx]
+            elif isinstance(res_data, dict):
+                point_data = res_data
+            else:
+                point_data = {}
+                
+            daily = point_data.get("daily", {})
+            times = daily.get("time", [])
             precip = daily.get("precipitation_sum", [])
-            sum_7d = sum(p for p in precip[:7] if p is not None)
-        elif res_data and isinstance(res_data, dict):
-            daily = res_data.get("daily", {})
-            precip = daily.get("precipitation_sum", [])
-            sum_7d = sum(p for p in precip[:7] if p is not None)
+            
+            precip_map = {t: (float(p) if p is not None else 0.0) for t, p in zip(times, precip)}
+            for offset in range(1, 8):
+                prev = (target_dt - timedelta(days=offset)).strftime("%Y-%m-%d")
+                sum_7d += precip_map.get(prev, 0.0)
             
         payload = {
             "district": district_name,
