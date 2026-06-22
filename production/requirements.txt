@@ -25,6 +25,7 @@ pydantic>=2.0
 python-dotenv
 psycopg2-binary>=2.9.10
 rasterio
+apscheduler>=3.10.4
 
 # ── PDF Report Generation ─────────────────────────────────────────────
 reportlab==4.2.5

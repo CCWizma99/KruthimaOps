@@ -86,6 +86,8 @@ def _risk_level(score: float) -> str:
 
 # ── Startup / Shutdown ────────────────────────────────────────────────
 
+from apscheduler.schedulers.background import BackgroundScheduler
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -93,11 +95,23 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("[Startup] Loading ML artifacts...")
     load_artifacts()
-    logger.info("[Startup] Launching background precompute thread...")
+    
+    # 1. Run initial precomputation immediately
+    logger.info("[Startup] Launching initial background precompute thread...")
     threading.Thread(target=_bg_precompute_all_forecasts, daemon=True).start()
+    
+    # 2. Schedule daily precomputation
+    scheduler = BackgroundScheduler()
+    # Runs every day at 00:05 (Colombo time assuming server is in same timezone)
+    scheduler.add_job(_bg_precompute_all_forecasts, "cron", hour=0, minute=5)
+    scheduler.start()
+    logger.info("[Startup] Scheduled daily precomputations at 00:05.")
+    
     logger.info("[Startup] Flood Timeline is ready.")
     yield
-    # Shutdown (nothing to do)
+    
+    # Shutdown
+    scheduler.shutdown()
 
 
 # ── App ───────────────────────────────────────────────────────────────
