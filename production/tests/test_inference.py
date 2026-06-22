@@ -21,5 +21,5 @@ def test_inference_returns_valid_score():
 def test_get_metadata():
     meta = get_model_metadata()
     assert "version" in meta
-    assert meta["version"] == "prod_v1k.2"
+    assert meta["version"] == "prod_v1000"
     assert "oof_mae" in meta
